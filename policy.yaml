@@ -1,0 +1,91 @@
+# Outside-counsel billing policy, machine-readable.
+#
+# This file is the contract between legal ops and the agent. The LLM never sees
+# it - it only extracts fields. Every APPROVE/EXCEPTION decision is made by
+# policy.py reading these rules, so a decision can always be traced to a line
+# in this file.
+
+version: 3
+currency: USD
+
+settings:
+  # Minutes of paralegal time an auto-approval saves, used for the KPI tile.
+  review_minutes_per_invoice: 7
+
+rules:
+  - id: extraction_confidence
+    enabled: true
+    title: Extraction confidence
+    description: Never act on fields the model was unsure about.
+    params:
+      min_confidence: 0.80
+
+  - id: matter_known
+    enabled: true
+    title: Known matter
+    description: Every invoice must map to an open matter in the registry.
+    params: {}
+
+  - id: vendor_panel
+    enabled: true
+    title: Approved vendor panel
+    description: Only firms on the panel can be paid without a human signature.
+    params: {}
+
+  - id: amount_ceiling
+    enabled: true
+    title: Auto-approval ceiling
+    description: Invoices above the ceiling always get a human signature.
+    params:
+      max_auto_approve: 5000
+
+  - id: blocked_line_items
+    enabled: true
+    title: Disallowed billing codes
+    description: Codes the outside counsel guidelines say we do not pay.
+    params:
+      blocked:
+        - code: A101
+          label: administrative / clerical time
+        - code: E110
+          label: out-of-town travel
+        - code: rush surcharge
+          label: unapproved rush surcharge
+        - code: word processing
+          label: clerical word processing
+
+  - id: matter_budget
+    enabled: true
+    title: Matter budget guard
+    description: Hold invoices that would push a matter past its budget ceiling.
+    params:
+      utilization_ceiling: 0.90
+
+approved_vendors:
+  - Wexler & Cole LLP
+  - Bramwell Hastings LLP
+  - Tanaka IP Partners
+  - Orion Court Reporting
+  - Delacroix & Boone
+
+matters:
+  MAT-1042:
+    name: Acme Robotics v. Nordic Systems
+    budget: 50000
+    spent_to_date: 41200
+  MAT-2287:
+    name: Series C Financing
+    budget: 90000
+    spent_to_date: 52000
+  MAT-3310:
+    name: Hollis Employment Arbitration
+    budget: 25000
+    spent_to_date: 9400
+  MAT-4455:
+    name: EU Data Privacy Audit
+    budget: 40000
+    spent_to_date: 12800
+  MAT-5001:
+    name: Project Ferrous / M&A Diligence
+    budget: 150000
+    spent_to_date: 61000

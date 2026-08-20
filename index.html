@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Policy-Gated Invoice Exception Router</title>
+<style>
+  :root {
+    --bg:#0a0e14; --panel:#111823; --panel2:#0e141d; --line:#1e2937;
+    --text:#d5e2f2; --dim:#7d8ea6; --faint:#4d5c72;
+    --ok:#35d39a; --warn:#f5a524; --bad:#ff5f5f; --info:#4aa8ff; --agent:#a78bfa;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  .mono { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  header {
+    display:flex; align-items:center; gap:16px; padding:14px 20px;
+    border-bottom:1px solid var(--line); background:linear-gradient(180deg,#121a26,#0d131c);
+  }
+  header h1 { font-size:15px; margin:0; letter-spacing:.2px; }
+  header .hook { color:var(--dim); font-size:12px; font-style:italic; }
+  .chips { display:flex; gap:6px; margin-left:auto; align-items:center; flex-wrap:wrap; }
+  .chip {
+    font-size:11px; padding:3px 8px; border-radius:999px;
+    border:1px solid var(--line); background:#0e1520; color:var(--dim);
+  }
+  .chip b { color:var(--text); font-weight:600; }
+  button {
+    font:inherit; cursor:pointer; border-radius:6px; padding:6px 11px;
+    background:#182231; color:var(--text); border:1px solid #24334a;
+  }
+  button:hover { background:#1f2c3f; }
+  button:disabled { opacity:.35; cursor:not-allowed; }
+  button.primary { background:#12503c; border-color:#1c6d52; color:#b6f5dd; }
+  button.primary:hover { background:#166348; }
+  button.danger { background:#3a1620; border-color:#5d2130; color:#ffc4c4; }
+  button.danger.on { background:var(--bad); border-color:var(--bad); color:#2a0505; font-weight:600; }
+  button.tiny { padding:3px 8px; font-size:11px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--line); border-bottom:1px solid var(--line); }
+  .kpi { background:var(--panel2); padding:9px 14px; }
+  .kpi .v { font-size:19px; font-weight:650; letter-spacing:-.4px; }
+  .kpi .l { font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+
+  main { display:grid; grid-template-columns:330px minmax(0,1fr) 370px; gap:12px; padding:12px; align-items:start; }
+  .col { display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .card > h2 {
+    margin:0; padding:8px 12px; font-size:11px; text-transform:uppercase; letter-spacing:.7px;
+    color:var(--dim); border-bottom:1px solid var(--line); background:var(--panel2);
+    display:flex; align-items:center; gap:8px;
+  }
+  .card > h2 .count { margin-left:auto; color:var(--text); font-size:11px; }
+  .body { padding:11px 12px; }
+  .scroll { max-height:250px; overflow-y:auto; }
+
+  /* pipeline */
+  .pipe { display:flex; align-items:stretch; gap:0; padding:14px 12px; }
+  .node {
+    flex:1; border:1px solid var(--line); border-radius:8px; padding:9px 11px;
+    background:var(--panel2); transition:all .18s; position:relative; min-width:0;
+  }
+  .node .t { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+  .node .n { font-size:13px; font-weight:600; margin:2px 0 3px; }
+  .node .d { font-size:11px; color:var(--faint); min-height:15px; word-break:break-word; }
+  .node.active { border-color:var(--info); background:#0d1b2b; box-shadow:0 0 0 1px var(--info),0 0 20px -6px var(--info); }
+  .node.done { border-color:#1d5a45; }
+  .node.done .n { color:var(--ok); }
+  .node.err { border-color:var(--bad); background:#1e0f14; }
+  .arrow { display:flex; align-items:center; color:var(--faint); padding:0 7px; font-size:15px; }
+  .arrow.lit { color:var(--info); text-shadow:0 0 8px var(--info); }
+  .split { flex:1; display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .sink { border:1px solid var(--line); border-radius:8px; padding:6px 10px; background:var(--panel2); font-size:11.5px; }
+  .sink.hit-ok { border-color:var(--ok); background:#0d1f19; color:var(--ok); }
+  .sink.hit-warn { border-color:var(--warn); background:#221a0c; color:var(--warn); }
+
+  /* inbox */
+  .inbox { display:flex; flex-wrap:wrap; gap:6px; padding:11px 12px; }
+  .inv {
+    border:1px solid var(--line); border-radius:6px; padding:5px 9px; cursor:pointer;
+    background:var(--panel2); font-size:11.5px; transition:all .15s;
+  }
+  .inv:hover { border-color:var(--info); color:#fff; }
+  .inv.done { opacity:.4; cursor:default; }
+  .inv.done:hover { border-color:var(--line); }
+  .inv.running { border-color:var(--info); background:#0d1b2b; }
+  .inv .dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:var(--faint); }
+  .inv.ok .dot { background:var(--ok); }
+  .inv.exc .dot { background:var(--warn); }
+
+  /* policy tape */
+  .rule { display:flex; gap:8px; padding:5px 0; border-bottom:1px solid #17202c; font-size:12px; }
+  .rule:last-child { border-bottom:0; }
+  .rule .ic { width:15px; flex:none; text-align:center; font-weight:700; }
+  .rule.pass .ic { color:var(--ok); }
+  .rule.fire .ic { color:var(--bad); }
+  .rule.off .ic { color:var(--faint); }
+  .rule .rt { font-weight:600; }
+  .rule.off .rt, .rule.off .rd { color:var(--faint); text-decoration:line-through; }
+  .rule .rd { color:var(--dim); font-size:11.5px; }
+
+  .verdict { padding:8px 12px; font-weight:650; letter-spacing:.4px; display:flex; align-items:center; gap:9px; }
+  .verdict.APPROVE { background:#0d2b21; color:var(--ok); }
+  .verdict.EXCEPTION { background:#2b1f0c; color:var(--warn); }
+
+  /* queue + audit */
+  .qitem { border:1px solid #2a2314; background:#161208; border-radius:7px; padding:8px 10px; margin-bottom:7px; }
+  .qitem .top { display:flex; align-items:baseline; gap:7px; }
+  .qitem .amt { margin-left:auto; font-weight:650; }
+  .reason { color:var(--warn); font-size:11px; margin-top:3px; padding-left:11px; text-indent:-11px; }
+  .qact { display:flex; gap:6px; margin-top:7px; }
+  .aud { display:flex; gap:8px; padding:4px 0; font-size:11.5px; border-bottom:1px solid #17202c; }
+  .aud .sid { color:var(--faint); flex:none; }
+  .aud .ev { font-weight:600; flex:none; }
+  .aud.AUTO_APPROVED .ev, .aud.HUMAN_APPROVED .ev, .aud.RELEASED_ON_POLICY_CHANGE .ev { color:var(--ok); }
+  .aud.ROUTED_TO_HUMAN .ev { color:var(--warn); }
+  .aud.HUMAN_REJECTED .ev { color:var(--bad); }
+  .aud .meta { color:var(--dim); margin-left:auto; flex:none; }
+
+  /* budgets */
+  .bud { margin-bottom:9px; }
+  .bud .row { display:flex; font-size:11.5px; margin-bottom:3px; }
+  .bud .row .r { margin-left:auto; color:var(--dim); }
+  .bar { height:7px; background:#1a2432; border-radius:4px; overflow:hidden; position:relative; }
+  .bar i { display:block; height:100%; background:var(--ok); transition:width .5s; }
+  .bar.warn i { background:var(--warn); }
+  .bar.bad i { background:var(--bad); }
+  .bar .ceil { position:absolute; top:-2px; bottom:-2px; width:2px; background:#8fa6c4; opacity:.85; }
+
+  /* controls */
+  .ctl { margin-bottom:11px; }
+  .ctl label { display:flex; font-size:11.5px; color:var(--dim); margin-bottom:3px; }
+  .ctl label b { margin-left:auto; color:var(--text); font-family:ui-monospace,monospace; }
+  input[type=range] { width:100%; accent-color:var(--info); }
+  .toggle { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; cursor:pointer; }
+  .toggle .sw { width:28px; height:15px; border-radius:9px; background:#26313f; position:relative; flex:none; transition:.15s; }
+  .toggle .sw::after { content:""; position:absolute; top:2px; left:2px; width:11px; height:11px; border-radius:50%; background:#7d8ea6; transition:.15s; }
+  .toggle.on .sw { background:#12503c; }
+  .toggle.on .sw::after { left:15px; background:var(--ok); }
+  .vend { display:flex; flex-wrap:wrap; gap:5px; }
+  .vchip { font-size:11px; padding:3px 8px; border-radius:999px; cursor:pointer; border:1px solid #2b3446; background:#141c28; color:var(--faint); }
+  .vchip.on { border-color:#1c6d52; background:#0f2b22; color:var(--ok); }
+
+  .banner { padding:7px 12px; font-size:11.5px; border-top:1px solid var(--line); }
+  .banner.flip { background:#161d2b; color:var(--info); }
+  .banner.down { background:#2a0f14; color:var(--bad); font-weight:600; }
+
+  .log { max-height:130px; overflow-y:auto; font-size:11px; }
+  .log div { padding:2px 0; border-bottom:1px solid #17202c; color:var(--dim); }
+  .log .dir { color:var(--agent); font-weight:600; }
+  .log .res { color:var(--info); }
+  pre { margin:0; font-size:11px; color:var(--dim); white-space:pre-wrap; word-break:break-word; }
+  .conf { height:6px; background:#1a2432; border-radius:3px; position:relative; margin-top:5px; }
+  .conf i { display:block; height:100%; border-radius:3px; background:var(--ok); transition:width .3s; }
+  .conf.low i { background:var(--bad); }
+  .conf .floor { position:absolute; top:-3px; bottom:-3px; width:2px; background:#8fa6c4; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:#233043; border-radius:4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Policy-Gated Invoice Exception Router</h1>
+    <div class="hook">The agent extracts. The policy decides. A human gets everything it will not sign for.</div>
+  </div>
+  <div class="chips" id="runtime"></div>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="card" style="margin:12px 12px 0">
+  <h2>Decision pipeline <span class="count" id="pipeStatus">idle</span></h2>
+  <div class="pipe">
+    <div class="node" id="n-intake"><div class="t">1 &middot; intake</div><div class="n">Invoice</div><div class="d" id="d-intake">waiting</div></div>
+    <div class="arrow" id="a-1">&#9654;</div>
+    <div class="node" id="n-extract"><div class="t">2 &middot; MCP tool</div><div class="n">extract_invoice_fields</div><div class="d" id="d-extract">Bedrock converse</div></div>
+    <div class="arrow" id="a-2">&#9654;</div>
+    <div class="node" id="n-policy"><div class="t">3 &middot; MCP tool</div><div class="n">check_billing_policy</div><div class="d" id="d-policy">policy.yaml, deterministic</div></div>
+    <div class="arrow" id="a-3">&#9654;</div>
+    <div class="split">
+      <div class="sink" id="s-approve">&#10003; auto-approve &rarr; audit stream</div>
+      <div class="sink" id="s-human">&#9873; human queue &rarr; Redis LIST</div>
+    </div>
+  </div>
+  <div class="banner down" id="redisBanner" style="display:none"></div>
+</div>
+
+<main>
+  <!-- ---------------- controls ---------------- -->
+  <div class="col">
+    <div class="card">
+      <h2>Break it</h2>
+      <div class="body">
+        <button class="danger" id="btnDrift" style="width:100%;margin-bottom:7px">Inject model drift</button>
+        <button class="danger" id="btnRedis" style="width:100%">Kill Redis</button>
+        <div style="font-size:11px;color:var(--faint);margin-top:8px">
+          Drift lowers extraction confidence, so the policy stops trusting the model and everything
+          routes to a human. Killing Redis buffers audit writes and replays them on restore.
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>policy.yaml <span class="count" id="polver"></span></h2>
+      <div class="body">
+        <div class="ctl">
+          <label>Auto-approval ceiling <b id="lblCeil"></b></label>
+          <input type="range" id="ceil" min="1000" max="25000" step="250">
+        </div>
+        <div class="ctl">
+          <label>Confidence floor <b id="lblConf"></b></label>
+          <input type="range" id="conf" min="0.3" max="0.99" step="0.01">
+        </div>
+        <div class="ctl">
+          <label>Matter budget ceiling <b id="lblBud"></b></label>
+          <input type="range" id="bud" min="0.5" max="1" step="0.05">
+        </div>
+        <div id="rules"></div>
+        <div style="font-size:11px;color:var(--dim);margin:9px 0 5px">Approved vendor panel</div>
+        <div class="vend" id="vendors"></div>
+        <button class="tiny" id="btnRescore" style="width:100%;margin-top:10px">Re-score held queue against new policy</button>
+      </div>
+      <div class="banner flip" id="flipBanner" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ---------------- centre ---------------- -->
+  <div class="col">
+    <div class="card">
+      <h2>Invoice inbox
+        <span class="count">
+          <button class="tiny primary" id="btnAll">Run all pending</button>
+          <button class="tiny" id="btnReset">Reset</button>
+        </span>
+      </h2>
+      <div class="inbox" id="inbox"></div>
+    </div>
+
+    <div class="card">
+      <h2>Live decision <span class="count" id="liveId"></span></h2>
+      <div class="verdict" id="verdict" style="display:none"></div>
+      <div class="body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:5px">Raw invoice text</div>
+          <pre class="mono scroll" id="rawText" style="max-height:190px">click an invoice above</pre>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:5px">Model output (parsed JSON)</div>
+          <pre class="mono scroll" id="fields" style="max-height:150px">&mdash;</pre>
+          <div style="font-size:11px;color:var(--dim);margin-top:7px">confidence <b id="confVal" class="mono">&mdash;</b></div>
+          <div class="conf" id="confBar"><i style="width:0"></i><div class="floor"></div></div>
+        </div>
+      </div>
+      <h2>Policy tape &mdash; every rule, every reason</h2>
+      <div class="body" id="tape"><span style="color:var(--faint)">no evaluation yet</span></div>
+    </div>
+
+    <div class="card">
+      <h2>MCP traffic <span class="count mono" id="toolNames"></span></h2>
+      <div class="body log mono" id="mcplog"></div>
+    </div>
+  </div>
+
+  <!-- ---------------- right ---------------- -->
+  <div class="col">
+    <div class="card">
+      <h2>Human queue <span class="count mono" id="qlen"></span></h2>
+      <div class="body scroll" id="queue" style="max-height:330px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Audit stream <span class="count mono" id="alen"></span></h2>
+      <div class="body scroll mono" id="audit" style="max-height:250px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Matter budgets</h2>
+      <div class="body" id="budgets"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const money = n => n == null ? "-" : "$" + Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+let S = null, running = null;
+
+/* ------------------------------------------------------------------ render */
+
+function render(s) {
+  S = s;
+  const m = s.metrics, f = s.faults;
+
+  $("runtime").innerHTML = [
+    ["model", s.runtime.model.split(".").pop().split("-")[0]],
+    ["bedrock", s.runtime.bedrock],
+    ["redis", s.runtime.redis],
+    ["policy", "v" + s.policy.version],
+  ].map(([k,v]) => `<span class="chip">${k} <b>${v}</b></span>`).join("");
+
+  $("kpis").innerHTML = [
+    ["Processed", m.processed],
+    ["Auto-approved", m.auto_approved],
+    ["Sent to human", m.exceptions],
+    ["Auto rate", m.auto_rate + "%"],
+    ["Paid without a human", money(m.usd_auto_approved)],
+    ["Held for review", money(m.usd_held)],
+    ["Review mins saved", m.minutes_saved],
+  ].map(([l,v]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+
+  $("inbox").innerHTML = s.invoices.map(i => {
+    const d = s.decisions.find(x => x.invoice_id === i.id);
+    const cls = !i.done ? "" : (d && d.status.indexOf("APPROVE") === 0 ? "done ok" : "done exc");
+    return `<div class="inv ${cls} ${running===i.id?"running":""}" data-id="${i.id}"><span class="dot"></span>${i.id}</div>`;
+  }).join("");
+
+  $("polver").textContent = "v" + s.policy.version;
+  const ceil = ruleParam(s,"amount_ceiling","max_auto_approve");
+  const conf = ruleParam(s,"extraction_confidence","min_confidence");
+  const bud  = ruleParam(s,"matter_budget","utilization_ceiling");
+  setSlider("ceil", ceil, money(ceil));
+  setSlider("conf", conf, conf.toFixed(2));
+  setSlider("bud", bud, Math.round(bud*100) + "%");
+
+  $("rules").innerHTML = s.policy.rules.map(r =>
+    `<div class="toggle ${r.enabled?"on":""}" data-rule="${r.id}"><span class="sw"></span>${r.title}</div>`).join("");
+
+  const seen = new Set(s.policy.approved_vendors);
+  s.decisions.forEach(d => d.vendor && seen.add(d.vendor));
+  $("vendors").innerHTML = [...seen].sort().map(v =>
+    `<span class="vchip ${s.policy.approved_vendors.includes(v)?"on":""}" data-v="${v}">${v}</span>`).join("");
+
+  const flips = s.whatif;
+  $("flipBanner").style.display = flips.length ? "block" : "none";
+  if (flips.length) $("flipBanner").innerHTML =
+    `under this policy <b>${flips.length}</b> already-decided invoice(s) would flip: ` +
+    flips.map(x => `${x.invoice_id} ${x.from}&rarr;${x.to}`).join(", ");
+
+  $("qlen").textContent = s.queue.length + " waiting";
+  $("queue").innerHTML = s.queue.length ? s.queue.map(q => `
+    <div class="qitem">
+      <div class="top"><b>${q.invoice_id}</b><span style="color:var(--dim)">${q.vendor||"?"}</span>
+        <span class="amt">${money(q.amount)}</span></div>
+      <div style="font-size:11px;color:var(--faint)">${q.matter_id||"no matter"} &middot; confidence ${q.confidence}</div>
+      ${q.reasons.map(r => `<div class="reason">&#9888; ${r}</div>`).join("")}
+      <div class="qact">
+        <button class="tiny primary" data-ok="${q.invoice_id}">Approve</button>
+        <button class="tiny danger" data-no="${q.invoice_id}">Reject</button>
+      </div>
+    </div>`).join("") : `<span style="color:var(--faint)">queue empty</span>`;
+
+  $("alen").textContent = s.store.audit_len + " entries" + (s.store.buffered ? " (+" + s.store.buffered + " buffered)" : "");
+  $("audit").innerHTML = s.audit.map(a => `
+    <div class="aud ${a.event}">
+      <span class="sid">${(a.stream_id||"").split("-")[1]}</span>
+      <span class="ev">${a.event}</span>
+      <span>${a.invoice_id}</span>
+      <span class="meta">${money(a.amount)} &middot; ${a.actor}</span>
+    </div>`).join("");
+
+  $("budgets").innerHTML = s.matters.map(b => {
+    const cls = b.utilisation >= bud*100 ? "bad" : b.utilisation >= bud*100-15 ? "warn" : "";
+    return `<div class="bud">
+      <div class="row"><span>${b.id}</span><span class="r">${money(b.spent)} / ${money(b.budget)} &middot; ${b.utilisation}%</span></div>
+      <div class="bar ${cls}"><i style="width:${Math.min(b.utilisation,100)}%"></i><div class="ceil" style="left:${bud*100}%"></div></div>
+    </div>`;
+  }).join("");
+
+  $("toolNames").textContent = s.tools.map(t => t.name).join("  ");
+  $("btnDrift").classList.toggle("on", f.llm_degraded);
+  $("btnDrift").textContent = f.llm_degraded ? "Model drift ACTIVE - clear it" : "Inject model drift";
+  $("btnRedis").classList.toggle("on", f.redis_down);
+  $("btnRedis").textContent = f.redis_down ? "Redis DOWN - bring it back" : "Kill Redis";
+  $("redisBanner").style.display = f.redis_down ? "block" : "none";
+  $("redisBanner").textContent =
+    "Redis unreachable - " + s.store.buffered + " audit write(s) buffered in memory, nothing dropped. "
+    + "The queue and stream below are frozen until it is back.";
+  $("btnAll").disabled = s.runtime.pending === 0;
+}
+
+const ruleParam = (s,id,p) => s.policy.rules.find(r => r.id === id).params[p];
+function setSlider(id, value, label) {
+  if (document.activeElement !== $(id)) $(id).value = value;
+  $({ceil:"lblCeil",conf:"lblConf",bud:"lblBud"}[id]).textContent = label;
+}
+
+/* ------------------------------------------------------------------ live */
+
+const STAGES = ["intake","extract","policy"];
+function resetPipe() {
+  STAGES.forEach(s => { $("n-"+s).className = "node"; });
+  [1,2,3].forEach(i => $("a-"+i).classList.remove("lit"));
+  $("s-approve").className = "sink"; $("s-human").className = "sink";
+  $("tape").innerHTML = ""; $("verdict").style.display = "none";
+  $("fields").textContent = "..."; $("confVal").textContent = "-";
+  $("confBar").querySelector("i").style.width = "0";
+}
+
+function onStage(e) {
+  if (e.stage === "route") {
+    const ok = e.decision_status === "APPROVE";
+    $("s-" + (ok ? "approve" : "human")).className = "sink " + (ok ? "hit-ok" : "hit-warn");
+    $("pipeStatus").textContent = e.invoice_id + " - " + (ok ? "auto-approved" : "sent to human");
+    running = null;
+    return;
+  }
+  const node = $("n-" + e.stage);
+  if (!node) return;
+  $("pipeStatus").textContent = e.invoice_id + " - " + e.stage;
+  if (e.status === "active") {
+    node.className = "node active";
+    $("a-" + (STAGES.indexOf(e.stage) || 1)).classList.add("lit");
+  } else {
+    node.className = "node done";
+    $("a-" + (STAGES.indexOf(e.stage) + 1)) && $("a-" + (STAGES.indexOf(e.stage) + 1)).classList.add("lit");
+  }
+  $("d-" + e.stage).textContent = e.detail;
+
+  if (e.fields) {
+    $("fields").textContent = JSON.stringify({
+      vendor: e.fields.vendor, amount: e.fields.amount, matter_id: e.fields.matter_id,
+      line_items: (e.fields.line_items||[]).length, confidence: e.fields.confidence,
+      notes: e.fields.notes
+    }, null, 1);
+    const c = e.fields.confidence, floor = ruleParam(S,"extraction_confidence","min_confidence");
+    $("confVal").textContent = c;
+    $("confBar").className = "conf" + (c < floor ? " low" : "");
+    $("confBar").querySelector("i").style.width = (c*100) + "%";
+    $("confBar").querySelector(".floor").style.left = (floor*100) + "%";
+  }
+}
+
+function onCheck(c) {
+  const icon = c.status === "fire" ? "&#10007;" : c.status === "off" ? "&#8212;" : "&#10003;";
+  $("tape").insertAdjacentHTML("beforeend",
+    `<div class="rule ${c.status}"><span class="ic">${icon}</span>
+       <span><span class="rt">${c.title}</span> &middot; <span class="rd">${c.detail}</span></span></div>`);
+}
+
+function onDecision(r) {
+  const v = $("verdict");
+  v.style.display = "flex"; v.className = "verdict " + r.status;
+  v.innerHTML = r.status === "APPROVE"
+    ? `&#10003; APPROVE &middot; ${r.invoice_id} &middot; ${money(r.amount)} to ${r.vendor} &middot; ${r.latency_ms} ms`
+    : `&#9873; EXCEPTION &middot; ${r.invoice_id} &middot; ${r.reasons.length} rule(s) fired &middot; ${r.latency_ms} ms`;
+}
+
+function logMcp(e) {
+  const line = e.direction === "request"
+    ? `<span class="dir">&rarr; ${e.method}</span> ${e.tool} ${JSON.stringify(e.payload)}`
+    : `<span class="res">&larr; result</span> ${e.tool} ${JSON.stringify(e.payload)}`;
+  const box = $("mcplog");
+  box.insertAdjacentHTML("afterbegin", `<div>${line}</div>`);
+  while (box.children.length > 40) box.lastChild.remove();
+}
+
+const es = new EventSource("/api/events");
+es.onmessage = ev => {
+  const e = JSON.parse(ev.data);
+  if (e.type === "state") render(e.state);
+  else if (e.type === "stage") onStage(e);
+  else if (e.type === "check") onCheck(e);
+  else if (e.type === "decision") onDecision(e.record);
+  else if (e.type === "mcp") logMcp(e);
+  else if (e.type === "log") $("mcplog").insertAdjacentHTML("afterbegin",
+    `<div style="color:var(--${e.level==="error"?"bad":e.level==="warn"?"warn":"ok"})">${e.text}</div>`);
+};
+
+/* ------------------------------------------------------------------ actions */
+
+const post = (url, body) => fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+  body: JSON.stringify(body||{})}).then(r => r.json());
+
+function runInvoice(id) {
+  const inv = S.invoices.find(i => i.id === id);
+  resetPipe(); running = id;
+  $("liveId").textContent = id + "  " + inv.file;
+  $("rawText").textContent = inv.text;
+  post("/api/run", {invoice_id: id});
+}
+
+$("inbox").addEventListener("click", e => {
+  const el = e.target.closest(".inv");
+  if (el && !el.classList.contains("done")) runInvoice(el.dataset.id);
+});
+$("btnAll").onclick = () => { resetPipe(); post("/api/run-all"); };
+$("btnReset").onclick = () => { resetPipe(); post("/api/reset"); };
+$("btnDrift").onclick = () => post("/api/fault", {llm_degraded: !S.faults.llm_degraded});
+$("btnRedis").onclick = () => post("/api/fault", {redis_down: !S.faults.redis_down});
+$("btnRescore").onclick = () => post("/api/rescore");
+$("rules").addEventListener("click", e => {
+  const el = e.target.closest(".toggle");
+  if (el) post("/api/policy", {rule_id: el.dataset.rule,
+    enabled: !S.policy.rules.find(r => r.id === el.dataset.rule).enabled});
+});
+$("vendors").addEventListener("click", e => {
+  const el = e.target.closest(".vchip");
+  if (el) post("/api/policy", {vendor: el.dataset.v});
+});
+$("queue").addEventListener("click", e => {
+  const ok = e.target.dataset.ok, no = e.target.dataset.no;
+  if (ok) post("/api/resolve", {invoice_id: ok, action: "approve"});
+  if (no) post("/api/resolve", {invoice_id: no, action: "reject"});
+});
+const slider = (id, rule, param, fmt) => {
+  $(id).oninput = () => setSlider(id, $(id).value, fmt(+$(id).value));
+  $(id).onchange = () => post("/api/policy", {rule_id: rule, param: param, value: +$(id).value});
+};
+slider("ceil", "amount_ceiling", "max_auto_approve", money);
+slider("conf", "extraction_confidence", "min_confidence", v => v.toFixed(2));
+slider("bud", "matter_budget", "utilization_ceiling", v => Math.round(v*100) + "%");
+
+fetch("/api/state").then(r => r.json()).then(render);
+</script>
+</body>
+</html>
