@@ -1,9 +1,13 @@
 """The extraction chain: prompt | model | parser.
 
 This is LCEL's shape written out in ~40 lines so the demo has no install step.
-In production the three pieces are `PromptTemplate`, `ChatBedrockConverse`
-(langchain_aws) and `JsonOutputParser` from LangChain, composed with the same
-`|` operator, and the rest of this file is unchanged.
+In LangChain the three pieces are `PromptTemplate`, `ChatBedrockConverse`
+(langchain_aws) and `JsonOutputParser`, composed with the same `|` operator.
+
+The model behind the chain is Google Gemini when GEMINI_API_KEY is set
+(gemini.py), checked against the invoice by verify.py. Without a key, or when
+the API fails, the offline reader in bedrock_sim.py answers instead, so the
+demo and the tests always run.
 
 The important part is what the chain does NOT do: it never decides anything. It
 returns fields plus a confidence, and hands off to policy.py.
@@ -11,10 +15,14 @@ returns fields plus a confidence, and hands off to policy.py.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
+import threading
 
 import bedrock_sim
+import gemini
+import verify
 
 EXTRACTION_PROMPT = """You are a legal-billing intake assistant.
 
@@ -77,6 +85,7 @@ class ChatBedrockConverse(Runnable):
             "usage": response["usage"],
             "latency_ms": response["metrics"]["latencyMs"],
             "stop_reason": response["stopReason"],
+            "model_version": response.get("modelVersion", self.model_id),
             "rendered": payload["rendered"],
         }
 
@@ -96,24 +105,64 @@ class JsonOutputParser(Runnable):
         return payload
 
 
-client, BACKEND = bedrock_sim.get_client()
-
-extraction_chain = (
-    PromptTemplate(EXTRACTION_PROMPT)
-    | ChatBedrockConverse(client, bedrock_sim.MODEL_ID)
-    | JsonOutputParser()
-)
+def _chain(model, model_id):
+    return PromptTemplate(EXTRACTION_PROMPT) | ChatBedrockConverse(model, model_id) | JsonOutputParser()
 
 
-def extract(document):
-    """Run one invoice through the chain and return fields plus the trace."""
-    result = extraction_chain.invoke({"document": document})
+live = gemini.get_client()
+if live is not None:
+    client, BACKEND, MODEL_ID = live, "gemini", gemini.MODEL_ID
+else:
+    client, BACKEND = bedrock_sim.get_client()
+    MODEL_ID = bedrock_sim.MODEL_ID
+
+extraction_chain = _chain(client, MODEL_ID)
+
+# The offline reader, used when the live model fails and for instant preseeding.
+offline_client = bedrock_sim.BedrockRuntime()
+offline_client.simulate_latency = False
+offline_chain = _chain(offline_client, bedrock_sim.MODEL_ID)
+
+_local = threading.local()
+
+
+@contextlib.contextmanager
+def offline():
+    """Run extractions in this block with the offline reader (no API calls)."""
+    _local.offline = True
+    try:
+        yield
+    finally:
+        _local.offline = False
+
+
+def _trace(result, model_id, backend):
     return {
         "fields": result["fields"],
         "prompt": result["rendered"],
         "raw_output": result["text"],
         "usage": result["usage"],
         "latency_ms": result["latency_ms"],
-        "model_id": bedrock_sim.MODEL_ID,
-        "backend": BACKEND,
+        "model_id": model_id,
+        "backend": backend,
     }
+
+
+def extract(document):
+    """Run one invoice through the chain and return fields plus the trace."""
+    if BACKEND != "gemini" or getattr(_local, "offline", False):
+        if BACKEND == "gemini":
+            offline_client.degraded = client.degraded
+            return _trace(offline_chain.invoke({"document": document}), bedrock_sim.MODEL_ID, "offline")
+        return _trace(extraction_chain.invoke({"document": document}), MODEL_ID, BACKEND)
+
+    try:
+        result = extraction_chain.invoke({"document": document})
+    except gemini.GeminiError as exc:
+        offline_client.degraded = client.degraded
+        trace = _trace(offline_chain.invoke({"document": document}), bedrock_sim.MODEL_ID, "offline")
+        trace["fields"]["notes"] = list(trace["fields"].get("notes") or []) + [
+            "live model unavailable (%s); read by the offline reader" % exc]
+        return trace
+    result["fields"] = verify.verify(result["fields"], document)
+    return _trace(result, MODEL_ID, "gemini")

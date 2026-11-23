@@ -177,7 +177,7 @@
   <div class="pipe">
     <div class="node" id="n-intake"><div class="t">1 &middot; intake</div><div class="n">Invoice</div><div class="d" id="d-intake">waiting</div></div>
     <div class="arrow" id="a-1">&#9654;</div>
-    <div class="node" id="n-extract"><div class="t">2 &middot; MCP tool</div><div class="n">extract_invoice_fields</div><div class="d" id="d-extract">Bedrock converse</div></div>
+    <div class="node" id="n-extract"><div class="t">2 &middot; MCP tool</div><div class="n">extract_invoice_fields</div><div class="d" id="d-extract">LLM extraction</div></div>
     <div class="arrow" id="a-2">&#9654;</div>
     <div class="node" id="n-policy"><div class="t">3 &middot; MCP tool</div><div class="n">check_billing_policy</div><div class="d" id="d-policy">policy.yaml, deterministic</div></div>
     <div class="arrow" id="a-3">&#9654;</div>
@@ -296,8 +296,8 @@ function render(s) {
   const m = s.metrics, f = s.faults;
 
   $("runtime").innerHTML = [
-    ["model", s.runtime.model.split(".").pop().split("-")[0]],
-    ["bedrock", s.runtime.bedrock],
+    ["model", s.runtime.model.startsWith("anthropic.") ? s.runtime.model.split(".").pop().split("-")[0] : s.runtime.model],
+    ["extraction", {gemini:"live", simulated:"offline reader"}[s.runtime.bedrock] || s.runtime.bedrock],
     ["redis", s.runtime.redis],
     ["policy", "v" + s.policy.version],
   ].map(([k,v]) => `<span class="chip">${k} <b>${v}</b></span>`).join("");

@@ -1,0 +1,20 @@
+# Only the static demo (web/) and the extraction function ship.
+# Leading slashes anchor to the repo root, so web/index.html is kept.
+.env
+.env.*
+.venv
+.pytest_cache
+.coverage
+__pycache__
+/tests
+/scripts
+/app.py
+/index.html
+/mcp_server.py
+/mcp_tools.py
+/store.py
+/policy.py
+/policy.yaml
+/invoices.py
+/run.sh
+/README.md

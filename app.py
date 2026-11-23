@@ -19,7 +19,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-import bedrock_sim
 import chain
 import invoices
 import mcp_tools
@@ -99,8 +98,9 @@ class Router:
         """Boot with history on the board - the console is never empty."""
         if hasattr(chain.client, "simulate_latency"):
             chain.client.simulate_latency = False
-        for invoice_id in invoices.PRESEED_IDS:
-            self.process(invoices.BY_ID[invoice_id], quiet=True)
+        with chain.offline():  # instant, and no API calls on every reset
+            for invoice_id in invoices.PRESEED_IDS:
+                self.process(invoices.BY_ID[invoice_id], quiet=True)
         if hasattr(chain.client, "simulate_latency"):
             chain.client.simulate_latency = True
 
@@ -361,7 +361,7 @@ class Router:
                 "redis_down": not self.store.up,
             },
             "runtime": {
-                "model": bedrock_sim.MODEL_ID,
+                "model": chain.MODEL_ID,
                 "bedrock": chain.BACKEND,
                 "redis": self.store.backend,
                 "pending": len(self.pending),
@@ -497,7 +497,7 @@ def main():
     server.daemon_threads = True
     stats = ROUTER.store.stats()
     print("Policy-Gated Invoice Exception Router")
-    print("  bedrock : %s (%s)" % (chain.BACKEND, bedrock_sim.MODEL_ID))
+    print("  model   : %s (%s)" % (chain.BACKEND, chain.MODEL_ID))
     print("  redis   : %s  audit=%d queue=%d" % (
         stats["backend"], stats["audit_len"], stats["queue_len"]))
     print("  open    : http://localhost:%d" % PORT)

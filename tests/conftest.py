@@ -6,6 +6,9 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+# The suite never calls the live model: chain.py picks its backend at import time.
+os.environ.pop("GEMINI_API_KEY", None)
+
 import policy  # noqa: E402
 
 
@@ -25,3 +28,4 @@ def spend(pol):
 def no_real_redis(monkeypatch):
     monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.delenv("USE_REAL_BEDROCK", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)

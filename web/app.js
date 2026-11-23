@@ -160,10 +160,40 @@ function rngFor(text) {
 function extract(document, quiet=false) {
   const prompt=EXTRACTION_PROMPT.replace("{document}",document), random=rngFor(document);
   let fields=readInvoice(prompt);
-  if(state.faults.llm_degraded){fields=clone(fields);fields.confidence=round2(.31+random()*(.62-.31));if(fields.amount!=null)fields.amount=round2(fields.amount*(.55+random()*.9));if(random()<.4)fields.matter_id=null;fields.notes=[...(fields.notes||[]),"model returned unstable fields"];}
+  if(state.faults.llm_degraded)fields=degrade(fields,random);
   const raw_output=JSON.stringify(fields,null,2), usage={inputTokens:Math.max(1,Math.floor(prompt.length/4)),outputTokens:Math.max(1,Math.floor(raw_output.length/4))};
   usage.totalTokens=usage.inputTokens+usage.outputTokens;
   return {fields,prompt,raw_output,usage,latency_ms:quiet?0:Math.floor(220+random()*280+(state.faults.llm_degraded?150:0)),model_id:MODEL_ID,backend:"simulated"};
+}
+
+function degrade(fields,random){
+  fields=clone(fields);fields.confidence=round2(.31+random()*(.62-.31));if(fields.amount!=null)fields.amount=round2(fields.amount*(.55+random()*.9));if(random()<.4)fields.matter_id=null;fields.notes=[...(fields.notes||[]),"model returned unstable fields"];return fields;
+}
+
+// The live model runs behind /api/extract (Vercel function) so the API key
+// never reaches the browser. Opened as a file, or if the call fails, the
+// in-browser reader above answers instead.
+const LIVE = {live:false, model:MODEL_ID};
+async function checkLive(){
+  if(location.protocol==="file:")return;
+  try{const r=await fetch("/api/extract");if(r.ok){const j=await r.json();LIVE.live=!!j.live;if(j.live)LIVE.model=j.model;}}catch(e){}
+  render(snapshot());
+}
+
+async function extractLive(document, quiet=false) {
+  if(quiet||!LIVE.live)return extract(document,quiet);
+  try{
+    const r=await fetch("/api/extract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:document})});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
+    if(state.faults.llm_degraded){j.fields=degrade(j.fields,rngFor(document));j.raw_output=JSON.stringify(j.fields,null,2);}
+    j.live=true;return j;
+  }catch(e){
+    const out=extract(document,quiet);
+    out.fields.notes=[...(out.fields.notes||[]),`live model unavailable (${e.message}); read by the in-browser reader`];
+    addLog("warn",`live model unavailable: ${e.message}`);
+    return out;
+  }
 }
 
 function nextStreamId(){state.seq++;return `${Date.now()}-${state.seq}`;}
@@ -186,15 +216,15 @@ async function processInvoice(invoice, quiet=false, token=generation) {
     await hop("intake","active",`${invoice.id} (${invoice.file})`);
     await hop("extract","active","tools/call extract_invoice_fields");
     if(!quiet)emitMcp({direction:"request",method:"tools/call",tool:"extract_invoice_fields",payload:{invoice_text:invoice.text.slice(0,80)+" ..."}});
-    const extraction=extract(invoice.text,quiet), fields=extraction.fields; state.tokens+=extraction.usage.totalTokens;
-    if(!quiet){await sleep(extraction.latency_ms);emitMcp({direction:"response",method:"tools/call",tool:"extract_invoice_fields",is_error:false,payload:{vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence}});}
+    const extraction=await extractLive(invoice.text,quiet), fields=extraction.fields; state.tokens+=extraction.usage.totalTokens;
+    if(!quiet){if(!extraction.live)await sleep(extraction.latency_ms);emitMcp({direction:"response",method:"tools/call",tool:"extract_invoice_fields",is_error:false,payload:{vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence}});}
     await hop("extract","done",`${extraction.usage.totalTokens} tokens, ${extraction.latency_ms} ms`,{fields,prompt:extraction.prompt,raw_output:extraction.raw_output,usage:extraction.usage});
     await hop("policy","active","tools/call check_billing_policy");
     if(!quiet)emitMcp({direction:"request",method:"tools/call",tool:"check_billing_policy",payload:{vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence}});
     const verdict=policyCheck(fields,state.policy,state.spend);
     if(!quiet){for(const c of verdict.checks){onCheck(c);await sleep(PACE/2);}emitMcp({direction:"response",method:"tools/call",tool:"check_billing_policy",is_error:false,payload:{status:verdict.status,reasons:verdict.reasons}});}
     await hop("policy","done",verdict.status,{checks:verdict.checks});
-    const elapsed=Math.floor(performance.now()-started), record={invoice_id:invoice.id,file:invoice.file,vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence,status:verdict.status,reasons:verdict.reasons,checks:verdict.checks,notes:fields.notes||[],line_items:fields.line_items||[],policy_version:verdict.policy_version,model:MODEL_ID,backend:"simulated",latency_ms:elapsed,decided_at:Date.now()/1000};
+    const elapsed=Math.floor(performance.now()-started), record={invoice_id:invoice.id,file:invoice.file,vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence,status:verdict.status,reasons:verdict.reasons,checks:verdict.checks,notes:fields.notes||[],line_items:fields.line_items||[],policy_version:verdict.policy_version,model:extraction.model_id,backend:extraction.backend,latency_ms:elapsed,decided_at:Date.now()/1000};
     const approved=verdict.status==="APPROVE";if(approved&&state.spend[record.matter_id]!=null)state.spend[record.matter_id]+=record.amount||0;
     const buffered=appendAudit({invoice_id:invoice.id,actor:"agent",event:approved?"AUTO_APPROVED":"ROUTED_TO_HUMAN",status:verdict.status,vendor:record.vendor,amount:record.amount,matter_id:record.matter_id,confidence:record.confidence,reasons:verdict.reasons,policy_version:verdict.policy_version});
     if(!approved)pushException({invoice_id:invoice.id,file:invoice.file,vendor:record.vendor,amount:record.amount,matter_id:record.matter_id,confidence:record.confidence,reasons:verdict.reasons,queued_at:Date.now()/1000});
@@ -207,7 +237,7 @@ async function processInvoice(invoice, quiet=false, token=generation) {
 
 function metrics(){const approved=state.decisions.filter(d=>["APPROVE","HUMAN_APPROVED"].includes(d.status)),auto=state.decisions.filter(d=>d.status==="APPROVE");return{processed:state.decisions.length,auto_approved:auto.length,exceptions:state.decisions.filter(d=>d.status==="EXCEPTION").length,auto_rate:state.decisions.length?Math.round(100*auto.length/state.decisions.length):0,usd_auto_approved:round2(approved.reduce((n,d)=>n+(d.amount||0),0)),usd_held:round2(state.queue.reduce((n,q)=>n+(q.amount||0),0)),avg_latency_ms:state.latencies.length?Math.floor(state.latencies.reduce((a,b)=>a+b,0)/state.latencies.length):0,minutes_saved:auto.length*state.policy.settings.review_minutes_per_invoice,tokens:state.tokens};}
 function whatif(){const spend=Object.fromEntries(Object.entries(state.policy.matters).map(([id,m])=>[id,m.spent_to_date])),flips=[];for(const r of state.decisions){const v=policyCheck(r,state.policy,spend);if(v.status==="APPROVE"&&spend[r.matter_id]!=null)spend[r.matter_id]+=r.amount||0;const was=["APPROVE","HUMAN_APPROVED"].includes(r.status)?"APPROVE":"EXCEPTION";if(v.status!==was)flips.push({invoice_id:r.invoice_id,from:was,to:v.status,reasons:v.reasons});}return flips;}
-function snapshot(){return{invoices:SEED_INVOICES.map(i=>({...i,done:!state.pending.has(i.id)})),policy:state.policy,matters:Object.entries(state.policy.matters).map(([id,m])=>({id,name:m.name,budget:m.budget,spent:round2(state.spend[id]||0),utilisation:Math.round(1000*(state.spend[id]||0)/m.budget)/10})),decisions:state.decisions.slice(-40),audit:state.auditRaw.slice(-60).reverse(),queue:clone(state.queue),metrics:metrics(),store:{backend:"in-process",up:state.store.up,audit_len:state.auditRaw.length,queue_len:state.queue.length,buffered:state.buffer.length,replayed:state.store.replayed},faults:state.faults,runtime:{model:MODEL_ID,bedrock:"simulated",redis:"in-process",pending:state.pending.size},tools:TOOLS,whatif:whatif()};}
+function snapshot(){return{invoices:SEED_INVOICES.map(i=>({...i,done:!state.pending.has(i.id)})),policy:state.policy,matters:Object.entries(state.policy.matters).map(([id,m])=>({id,name:m.name,budget:m.budget,spent:round2(state.spend[id]||0),utilisation:Math.round(1000*(state.spend[id]||0)/m.budget)/10})),decisions:state.decisions.slice(-40),audit:state.auditRaw.slice(-60).reverse(),queue:clone(state.queue),metrics:metrics(),store:{backend:"in-process",up:state.store.up,audit_len:state.auditRaw.length,queue_len:state.queue.length,buffered:state.buffer.length,replayed:state.store.replayed},faults:state.faults,runtime:{model:LIVE.live?LIVE.model:MODEL_ID,bedrock:LIVE.live?"gemini":"simulated",redis:"in-process",pending:state.pending.size},tools:TOOLS,whatif:whatif()};}
 
 async function resetState() {generation++;state={policy:clone(INITIAL_POLICY),spend:{},decisions:[],pending:new Set(SEED_INVOICES.map(i=>i.id)),latencies:[],tokens:0,auditRaw:[],queue:[],buffer:[],seq:0,store:{up:true,replayed:0},faults:{llm_degraded:false,redis_down:false}};for(const[id,m]of Object.entries(state.policy.matters))state.spend[id]=m.spent_to_date;for(const id of PRESEED_IDS)await processInvoice(BY_ID[id],true,generation);running=null;render(snapshot());}
 function addLog(level,text){$("mcplog").insertAdjacentHTML("afterbegin",`<div style="color:var(--${level==="error"?"bad":level==="warn"?"warn":"ok"})">${text}</div>`);}
@@ -229,4 +259,13 @@ $("queue").addEventListener("click",e=>{if(e.target.dataset.ok)resolveItem(e.tar
 const slider=(id,rule,param,formatter)=>{$(id).oninput=()=>setSlider(id,$(id).value,formatter(+$(id).value));$(id).onchange=()=>updatePolicy({rule_id:rule,param,value:+$(id).value});};
 slider("ceil","amount_ceiling","max_auto_approve",money);slider("conf","extraction_confidence","min_confidence",v=>v.toFixed(2));slider("bud","matter_budget","utilization_ceiling",v=>Math.round(v*100)+"%");
 
-resetState();
+let mineCount=0;
+$("btnMine").onclick=()=>{
+  const text=$("mineText").value.trim();
+  if(!text){$("mineNote").textContent="paste some invoice text first";return;}
+  mineCount++;const inv={id:`YOURS-${mineCount}`,file:"pasted text",text};
+  SEED_INVOICES.push(inv);BY_ID[inv.id]=inv;state.pending.add(inv.id);
+  $("mineNote").textContent=LIVE.live?`running on ${LIVE.model}`:"running on the in-browser reader (no live model here)";
+  render(snapshot());runInvoice(inv.id);
+};
+resetState().then(checkLive);

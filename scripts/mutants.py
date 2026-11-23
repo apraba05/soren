@@ -51,6 +51,27 @@ MUTANTS = [
     ("M3.6", "store.py", "return list(reversed(out))", "return out", "test_store.py"),
     ("M3.7", "store.py", "if not self.up:\n            raise", "if False:\n            raise",
      "test_store.py"),
+
+    ("M4.1", "verify.py", "TOLERANCE = 0.01", "TOLERANCE = 0.02", "test_verify.py"),
+    ("M4.2", "verify.py", "min(reported, CAP) if problems else reported", "reported", "test_verify.py"),
+    ("M4.3", "verify.py", "if amount is not None and round(amount, 2) not in amounts_in(document):",
+     "if False:", "test_verify.py"),
+    ("M4.4", "verify.py", "re.findall(MONEY, document)", "re.findall(r\"[0-9][0-9,]*[.][0-9]{2}\", document)",
+     "test_verify.py"),
+    ("M4.5", "verify.py", "min(max(float(reported), 0.0), 1.0)", "float(reported)", "test_verify.py"),
+    ("M4.6", "verify.py", "elif items and amount is not None:", "elif amount is not None:", "test_verify.py"),
+    ("M4.7", "verify.py", "if any(not _number(i.get(\"amount\")) for i in items):", "if False:",
+     "test_verify.py"),
+
+    ("M5.1", "gemini.py", "for p in parts if not p.get(\"thought\")", "for p in parts", "test_gemini.py"),
+    ("M5.2", "gemini.py", "meta.get(\"totalTokenCount\", 0) - in_tok", "meta.get(\"totalTokenCount\", 0)",
+     "test_gemini.py"),
+    ("M5.3", "chain.py", "except gemini.GeminiError as exc:", "except ValueError as exc:", "test_gemini.py"),
+    ("M5.4", "chain.py", "    finally:\n        _local.offline = False", "    finally:\n        pass",
+     "test_gemini.py"),
+    ("M5.5", "chain.py", "result[\"fields\"] = verify.verify(result[\"fields\"], document)", "pass",
+     "test_gemini.py"),
+    ("M5.6", "gemini.py", "if not parts:", "if parts is None:", "test_gemini.py"),
 ]
 
 
