@@ -77,8 +77,8 @@ def test_v9_confidence_is_clamped_to_0_1():
 
 
 def test_v10_ocr_damaged_total_still_counts_as_printed():
-    doc = DOC.replace("$2,759.00", "$2,759.0O")  # scanned zero read as the letter O
-    assert failed(verify(fields(), doc)) == []
+    for damaged in ("$2,759.0O", "$2,759.Q0"):  # a scanned zero read as the letter O or Q
+        assert failed(verify(fields(), DOC.replace("$2,759.00", damaged))) == []
 
 
 def test_v11_discount_line_is_a_negative_item():

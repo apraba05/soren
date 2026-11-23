@@ -5,10 +5,10 @@ Base Choice Coverage over six characteristics of the invoice text:
                   V5 all caps with a camel-case word (eDISCOVERY)
   T total lines   T1 one "Total Due" (base)   T2 none   T3 "Amount Due" then another total   T4 two plain totals
   M matter id     M1 present (base)   M2 absent
-  O OCR damage    O1 clean (base)   O2 letter O inside a number
+  O OCR damage    O1 clean (base)   O2 letter O inside a number   O3 letter Q inside a number
   L line items    L1 coded items (base)   L2 no items   L3 item without a code
   W wrapper       W1 raw text (base)   W2 inside the extraction prompt
-E1 is the base, E2-E13 and E15 each change one block, E14 is the confidence floor,
+E1 is the base, E2-E13, E15 and E17 each change one block, E14 is the confidence floor,
 E16 is the 60-character boundary next to E4.
 """
 
@@ -57,6 +57,8 @@ CASES = [
      VENDOR, 2900.00, "MAT-1042", 0.96, "2 total-like lines"),
     ("E8", invoice(matter="Matter: (none given)"), VENDOR, 2759.00, None, 0.74, "no matter id"),
     ("E9", invoice(totals=["  TOTAL DUE (USD)                $2,7O9.00"]),
+     VENDOR, 2709.00, "MAT-1042", 0.69, "repaired 1 OCR"),
+    ("E17", invoice(totals=["  TOTAL DUE (USD)                $2,7Q9.00"]),
      VENDOR, 2709.00, "MAT-1042", 0.69, "repaired 1 OCR"),
 ]
 
