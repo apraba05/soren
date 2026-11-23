@@ -231,7 +231,7 @@ async function reset() {
   generation++;
   running.clear();
   state = newState();
-  for (const inv of SEED_INVOICES.filter(i => i.file === "pasted text")) {
+  for (const inv of SEED_INVOICES.filter(i => i.custom)) {
     SEED_INVOICES.splice(SEED_INVOICES.indexOf(inv), 1); delete BY_ID[inv.id];
   }
   for (const id of PRESEED_IDS) await processInvoice(BY_ID[id], true);
@@ -328,14 +328,71 @@ $("queue").addEventListener("click", e => {
   if (e.target.dataset.ok) resolve(e.target.dataset.ok, true);
   if (e.target.dataset.no) resolve(e.target.dataset.no, false);
 });
+function addInvoice(text, file) {
+  const invoice = {id: `${file === "pasted text" ? "PASTED" : "UPLOAD"}-${++pasted}`, file, text, custom: true};
+  SEED_INVOICES.unshift(invoice); BY_ID[invoice.id] = invoice;
+  selected = invoice.id;
+  run([invoice.id]);
+}
+
 $("btnPaste").onclick = () => {
   const text = $("pasteText").value.trim();
   if (!text) { $("pasteText").focus(); return; }
-  const invoice = {id: `PASTED-${++pasted}`, file: "pasted text", text};
-  SEED_INVOICES.unshift(invoice); BY_ID[invoice.id] = invoice;
   $("pasteText").value = "";
-  selected = invoice.id;
-  run([invoice.id]);
+  addInvoice(text, "pasted text");
+};
+
+// --- PDF upload ---------------------------------------------------------------
+// The PDF is turned into text here in the browser (pdf.js), then takes the same
+// path as a pasted invoice. A scan with no text layer cannot be read this way.
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/";
+const MAX_PDF_BYTES = 5 * 1024 * 1024, MAX_CHARS = 8000;
+
+// Rebuild lines from positioned text runs: same baseline = same line, and a
+// horizontal gap becomes spaces so amounts stay in their own column.
+function linesFrom(items) {
+  const runs = items.filter(i => i.str.trim()).map(i => ({text: i.str, x: i.transform[4], y: i.transform[5], w: i.width}));
+  runs.sort((a, b) => b.y - a.y || a.x - b.x);
+  const lines = [];
+  for (const run of runs) {
+    const line = lines[lines.length - 1];
+    if (line && Math.abs(line.y - run.y) < 3) line.runs.push(run); else lines.push({y: run.y, runs: [run]});
+  }
+  return lines.map(line => {
+    let out = "", end = null;
+    for (const run of line.runs.sort((a, b) => a.x - b.x)) {
+      const charWidth = run.w / run.text.length || 6;
+      if (end != null) out += " ".repeat(Math.max(1, Math.round((run.x - end) / charWidth)));
+      out += run.text; end = run.x + run.w;
+    }
+    return out;
+  });
+}
+
+async function pdfToText(file) {
+  const pdfjs = await import(PDFJS + "pdf.min.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.mjs";
+  const pdf = await pdfjs.getDocument({data: await file.arrayBuffer()}).promise;
+  const lines = [];
+  for (let n = 1; n <= pdf.numPages; n++) lines.push(...linesFrom((await (await pdf.getPage(n)).getTextContent()).items));
+  return lines.join("\n").trim();
+}
+
+$("pdfFile").onchange = async e => {
+  const file = e.target.files[0], note = $("pdfNote");
+  e.target.value = "";
+  if (!file) return;
+  if (file.size > MAX_PDF_BYTES) { note.textContent = "That PDF is over 5 MB."; return; }
+  note.textContent = "Reading the PDF…";
+  try {
+    const text = await pdfToText(file);
+    if (!text) { note.textContent = "No text found. Scanned PDFs without a text layer are not supported."; return; }
+    if (text.length > MAX_CHARS) { note.textContent = "That PDF has too much text for one invoice (8,000 characters max)."; return; }
+    note.textContent = "";
+    addInvoice(text, file.name);
+  } catch (err) {
+    note.textContent = "That file could not be read as a PDF.";
+  }
 };
 
 reset().then(checkLive).then(render);

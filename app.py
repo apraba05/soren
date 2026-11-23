@@ -408,6 +408,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send((ROOT / "web" / "index.html").read_bytes(), ctype="text/html; charset=utf-8")
         if path == "/app.js":
             return self._send((ROOT / "web" / "app.js").read_bytes(), ctype="text/javascript; charset=utf-8")
+        if path == "/sample-invoice.pdf":
+            return self._send((ROOT / "web" / "sample-invoice.pdf").read_bytes(), ctype="application/pdf")
         if path == "/api/extract":
             status, payload = extract_api.handle("GET", b"", self.client_address[0])
             return self._send(payload, code=status)
