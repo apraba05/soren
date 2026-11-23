@@ -4,8 +4,9 @@ Confidence = min(reported, 0.50) if any check fails, else reported, where the
 checks are C1 the total is printed on the invoice, C2 every line item has an
 amount, C3 the line items add up to the total within one cent, and C4 the
 model gave a numeric confidence. V1 passes every check, V2-V5 fail exactly one
-each, and V6-V13 are boundaries and the remaining blocks (each choice coverage
-over the total, the line items and the confidence).
+each, V6-V14 are boundaries and the remaining blocks (each choice coverage
+over the total, the line items and the confidence), and V15 fails two checks at
+once to show that each one is recorded.
 """
 
 import pytest
@@ -101,3 +102,17 @@ def test_v13_input_is_not_modified():
     original = fields(notes=["kept"])
     verify(original, DOC)
     assert original["notes"] == ["kept"] and "model_confidence" not in original
+
+
+def test_v14_missing_total_alone_skips_the_sum_check():
+    got = verify(fields(amount=None), DOC)  # both line items are still there
+    assert failed(got) == [] and got["confidence"] == 0.97
+
+
+def test_v15_every_failed_check_is_recorded():
+    # the total is not printed, and the line items do not add up to it
+    got = verify(fields(amount=2795.00), DOC)
+    notes = failed(got)
+    assert len(notes) == 2 and got["confidence"] == CAP
+    assert any("not printed anywhere" in n for n in notes)
+    assert any("add to 2759.00 but the total is 2795.00" in n for n in notes)

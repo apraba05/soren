@@ -50,7 +50,7 @@ extraction endpoint (20 requests a minute per client).
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest pyyaml coverage
-.venv/bin/pytest -q                          # 84 tests, offline, no API key needed
+.venv/bin/pytest -q                          # 86 tests, offline, no API key needed
 .venv/bin/python scripts/mutants.py          # 34 planted bugs, all killed
 .venv/bin/python scripts/eval_extraction.py  # extraction accuracy (live if GEMINI_API_KEY is set)
 ```
