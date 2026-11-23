@@ -7,6 +7,7 @@ amount_ceiling, blocked_line_items and matter_budget.
 P1-P7 give Correlated Active Clause Coverage: P1 has every clause false, and
 each of P2-P7 makes exactly one clause true. P8-P18 are boundary values on the
 inputs inside each clause (P20 is a missing vendor), and P19 is a disabled rule.
+P21 fires five rules at once, because each rule must report its own reason.
 """
 
 import pytest
@@ -104,3 +105,13 @@ def test_p19_disabled_rule(pol, spend):
     assert verdict["status"] == "APPROVE"
     status = {c["id"]: c["status"] for c in verdict["checks"]}
     assert status["amount_ceiling"] == "off"
+
+
+def test_p21_every_fired_rule_gives_its_own_reason(pol, spend):
+    # five rules at once (the sixth, matter_known, would make the budget rule skip)
+    verdict = policy_check(fields(
+        confidence=0.50, vendor="Vector Legal Staffing", matter_id="MAT-1042", amount=6000.00,
+        line_items=[{"code": "E110", "description": "Out-of-town travel", "amount": 6000.00}]), pol, spend)
+    assert verdict["status"] == "EXCEPTION"
+    assert fired(verdict) == [r for r in RULE_IDS if r != "matter_known"]
+    assert len(verdict["reasons"]) == 5 and len(set(verdict["reasons"])) == 5

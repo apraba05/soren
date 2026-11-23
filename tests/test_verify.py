@@ -5,8 +5,8 @@ checks are C1 the total is printed on the invoice, C2 every line item has an
 amount, C3 the line items add up to the total within one cent, and C4 the
 model gave a numeric confidence. V1 passes every check, V2-V5 fail exactly one
 each, V6-V14 are boundaries and the remaining blocks (each choice coverage
-over the total, the line items and the confidence), and V15 fails two checks at
-once to show that each one is recorded.
+over the total, the line items and the confidence), V15 fails two checks at
+once to show that each one is recorded, and V16 is a zero-valued line item.
 """
 
 import pytest
@@ -116,3 +116,8 @@ def test_v15_every_failed_check_is_recorded():
     assert len(notes) == 2 and got["confidence"] == CAP
     assert any("not printed anywhere" in n for n in notes)
     assert any("add to 2759.00 but the total is 2795.00" in n for n in notes)
+
+
+def test_v16_zero_valued_item_counts_as_an_amount():
+    items = ITEMS + [{"code": None, "description": "Courtesy copy, no charge", "amount": 0.00}]
+    assert failed(verify(fields(line_items=items), DOC)) == []
