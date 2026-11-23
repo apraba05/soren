@@ -28,12 +28,12 @@ no accounts, and no external services required.
 ## Running locally
 
 ```bash
-cd src
 bash run.sh
 ```
 
 Then open the printed URL. A prebuilt static version of the UI lives in
-`src/web/` and can be opened directly with no server.
+`web/` and can be opened directly with no server. The live demo is that
+folder, deployed to Vercel.
 
 ## Tests
 
