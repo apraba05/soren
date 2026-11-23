@@ -34,3 +34,16 @@ bash run.sh
 
 Then open the printed URL. A prebuilt static version of the UI lives in
 `src/web/` and can be opened directly with no server.
+
+## Tests
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install pytest pyyaml coverage
+.venv/bin/pytest -q                      # 49 tests
+.venv/bin/python scripts/mutants.py      # 25 planted bugs, all should be killed
+```
+
+- `tests/test_policy.py`: the policy engine (CACC on the APPROVE decision, threshold boundaries)
+- `tests/test_extract.py`: invoice field extraction (base choice coverage)
+- `tests/test_store.py`: audit stream and exception queue write gate (edge-pair coverage)
+- `tests/test_system.py`: all seed invoices through the router, human resolve, Redis outage
