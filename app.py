@@ -187,7 +187,7 @@ class Router:
             approved = verdict["status"] == "APPROVE"
             if approved and record["matter_id"] in self.spend:
                 self.spend[record["matter_id"]] += record["amount"] or 0
-            buffered = self.store.append_audit({
+            self.store.append_audit({
                 "invoice_id": invoice["id"],
                 "actor": "agent",
                 "event": "AUTO_APPROVED" if approved else "ROUTED_TO_HUMAN",
@@ -216,7 +216,7 @@ class Router:
 
         hop("route", "done",
             "auto-approved" if approved else "queued for human review",
-            decision_status=verdict["status"], buffered=buffered)
+            decision_status=verdict["status"])
         if not quiet:
             emit("decision", record=record)
             self.broadcast()
@@ -365,7 +365,6 @@ class Router:
             "store": self.store.stats(),
             "faults": {
                 "llm_degraded": bool(getattr(chain.client, "degraded", False)),
-                "redis_down": not self.store.up,
             },
             "runtime": {
                 "model": chain.MODEL_ID,
@@ -460,13 +459,6 @@ class Handler(BaseHTTPRequestHandler):
                 chain.client.degraded = bool(body["llm_degraded"])
                 emit("log", level="warn" if body["llm_degraded"] else "ok",
                      text="model drift %s" % ("INJECTED" if body["llm_degraded"] else "cleared"))
-            if "redis_down" in body:
-                if body["redis_down"]:
-                    ROUTER.store.take_down()
-                    emit("log", level="error", text="Redis unreachable - audit writes now buffering")
-                else:
-                    replayed = ROUTER.store.bring_up()
-                    emit("log", level="ok", text="Redis back - replayed %d buffered write(s)" % replayed)
             ROUTER.broadcast()
             return self._send({"ok": True})
 

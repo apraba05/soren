@@ -27,8 +27,7 @@ a serverless function, so the API key never reaches the browser.
    floor, known matter, approved vendor, amount ceiling, disallowed billing
    codes, matter budget). The model never makes the approval decision.
 4. **Route and record** (`store.py`): approvals and exceptions go to a Redis
-   stream (audit trail) and exceptions to a Redis list (human queue). Writes
-   are buffered and replayed if Redis is down.
+   stream (audit trail) and exceptions to a Redis list (human queue).
 5. **MCP** (`mcp_tools.py`, `mcp_server.py`): extraction and the policy check
    are exposed as MCP tools.
 
@@ -51,18 +50,18 @@ extraction endpoint (20 requests a minute per client).
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest pyyaml coverage
-.venv/bin/pytest -q                          # 90 tests, offline, no API key needed
-.venv/bin/python scripts/mutants.py          # 38 planted bugs, all killed
+.venv/bin/pytest -q                          # 83 tests, offline, no API key needed
+.venv/bin/python scripts/mutants.py          # 34 planted bugs, all killed
 .venv/bin/python scripts/eval_extraction.py  # extraction accuracy (live if GEMINI_API_KEY is set)
 ```
 
 - `tests/test_policy.py`: policy engine (CACC on the APPROVE decision, threshold boundaries)
-- `tests/test_verify.py`: the checks on model output (one failed check per test, cent-level boundaries)
+- `tests/test_verify.py`: the checks on model output (each choice coverage, cent-level boundaries)
 - `tests/test_gemini.py`: the Gemini adapter and fallback, with the HTTP call mocked
 - `tests/test_api.py`: the serverless endpoint's input limits and rate limiter
 - `tests/test_extract.py`: the offline reader (base choice coverage)
-- `tests/test_store.py`: audit stream and queue write gate (edge-pair coverage)
-- `tests/test_system.py`: all seed invoices through the router, human resolve, Redis outage
+- `tests/test_store.py`: audit stream and human queue
+- `tests/test_system.py`: all seed invoices through the router, human resolve
 
 ### Extraction accuracy (`scripts/eval_extraction.py`, 2026-11-23)
 

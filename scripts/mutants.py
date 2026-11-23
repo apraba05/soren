@@ -43,14 +43,9 @@ MUTANTS = [
     ("M2.8", "bedrock_sim.py", "if \"--- INVOICE ---\" in text:", "if False:", "test_extract.py"),
     ("M2.9", "bedrock_sim.py", "head = head[len(code):].strip()", "head = head", "test_extract.py"),
 
-    ("M3.1", "store.py", "self.buffer.popleft()", "self.buffer.pop()", "test_store.py"),
-    ("M3.2", "store.py", "self.replayed += replayed", "pass", "test_store.py"),
-    ("M3.3", "store.py", "self.buffer.append((op, args))", "pass", "test_store.py"),
     ("M3.4", "store.py", "entry.get(\"ts\") or time.time()", "time.time()", "test_store.py"),
     ("M3.5", "store.py", "self.client.lrem(EXCEPTION_QUEUE, 1, raw)", "pass", "test_store.py"),
     ("M3.6", "store.py", "return list(reversed(out))", "return out", "test_store.py"),
-    ("M3.7", "store.py", "if not self.up:\n            raise", "if False:\n            raise",
-     "test_store.py"),
 
     ("M4.1", "verify.py", "TOLERANCE = 0.01", "TOLERANCE = 0.02", "test_verify.py"),
     ("M4.2", "verify.py", "min(reported, CAP) if problems else reported", "reported", "test_verify.py"),

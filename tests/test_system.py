@@ -60,13 +60,3 @@ def test_s2_human_resolves_a_queued_invoice(router):
     assert router.store.audit(limit=1)[0]["event"] == "HUMAN_APPROVED"
     assert router.resolve("INV-2301", "approve") is None  # cannot approve twice
     assert router.spend["MAT-1042"] == before + 1920.00
-
-
-def test_s3_redis_outage_loses_nothing(router):
-    router.store.take_down()
-    for invoice_id in ("INV-2291", "INV-2292", "INV-2293"):
-        router.process(invoices.BY_ID[invoice_id], quiet=True)
-    assert router.store.stats()["audit_len"] == 0
-    assert router.store.bring_up() == 5  # 3 audit entries + 2 queue pushes
-    stats = router.store.stats()
-    assert (stats["audit_len"], stats["queue_len"]) == (3, 2)

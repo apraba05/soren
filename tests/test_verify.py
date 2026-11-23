@@ -4,7 +4,8 @@ Confidence = min(reported, 0.50) if any check fails, else reported, where the
 checks are C1 the total is printed on the invoice, C2 every line item has an
 amount, C3 the line items add up to the total within one cent, and C4 the
 model gave a numeric confidence. V1 passes every check, V2-V5 fail exactly one
-each (as in CACC for policy_check), and V6-V11 are boundaries inside a check.
+each, and V6-V13 are boundaries and the remaining blocks (each choice coverage
+over the total, the line items and the confidence).
 """
 
 import pytest
@@ -90,13 +91,13 @@ def test_v11_discount_line_is_a_negative_item():
     assert failed(verify(fields(amount=8855.00, line_items=items), doc)) == []
 
 
-def test_missing_fields_are_left_to_the_policy_engine():
+def test_v12_missing_fields_are_left_to_the_policy_engine():
     # policy.py already fires a rule for these, so verify adds nothing
     got = verify(fields(vendor=None, matter_id=None, amount=None, line_items=[]), DOC)
     assert failed(got) == [] and got["confidence"] == 0.97
 
 
-def test_input_is_not_modified():
+def test_v13_input_is_not_modified():
     original = fields(notes=["kept"])
     verify(original, DOC)
     assert original["notes"] == ["kept"] and "model_confidence" not in original
