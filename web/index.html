@@ -1,498 +1,179 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>Policy-Gated Invoice Exception Router</title>
+<title>Soren · Invoice review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#0a0e14; --panel:#111823; --panel2:#0e141d; --line:#1e2937;
-    --text:#d5e2f2; --dim:#7d8ea6; --faint:#4d5c72;
-    --ok:#35d39a; --warn:#f5a524; --bad:#ff5f5f; --info:#4aa8ff; --agent:#a78bfa;
+    --bg:#ffffff; --bg-subtle:#f7f7f8; --border:#e8e8ea;
+    --text:#0d0d0d; --text-2:#6b6b6b;
+    --dark:#0b1120; --muted-dark:#8fa3c8;
+    --teal:#3fffa2; --blue:#4f8ef7; --lavender:#a78bfa; --peach:#fca98d;
+    --mono:'JetBrains Mono','Fira Code',ui-monospace,monospace;
   }
   * { box-sizing:border-box; }
-  body {
-    margin:0; background:var(--bg); color:var(--text);
-    font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
-  }
-  .mono { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
-  header {
-    display:flex; align-items:center; gap:16px; padding:14px 20px;
-    border-bottom:1px solid var(--line); background:linear-gradient(180deg,#121a26,#0d131c);
-  }
-  header h1 { font-size:15px; margin:0; letter-spacing:.2px; }
-  header .hook { color:var(--dim); font-size:12px; font-style:italic; }
-  .chips { display:flex; gap:6px; margin-left:auto; align-items:center; flex-wrap:wrap; }
-  .chip {
-    font-size:11px; padding:3px 8px; border-radius:999px;
-    border:1px solid var(--line); background:#0e1520; color:var(--dim);
-  }
-  .chip b { color:var(--text); font-weight:600; }
-  button {
-    font:inherit; cursor:pointer; border-radius:6px; padding:6px 11px;
-    background:#182231; color:var(--text); border:1px solid #24334a;
-  }
-  button:hover { background:#1f2c3f; }
-  button:disabled { opacity:.35; cursor:not-allowed; }
-  button.primary { background:#12503c; border-color:#1c6d52; color:#b6f5dd; }
-  button.primary:hover { background:#166348; }
-  button.danger { background:#3a1620; border-color:#5d2130; color:#ffc4c4; }
-  button.danger.on { background:var(--bad); border-color:var(--bad); color:#2a0505; font-weight:600; }
-  button.tiny { padding:3px 8px; font-size:11px; }
-  .mine { margin-top:10px; font-size:12px; color:var(--dim); }
-  .mine summary { cursor:pointer; }
-  .mine textarea { width:100%; margin:8px 0 6px; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:11px; resize:vertical; }
-  .minenote { margin-left:8px; font-size:11px; color:var(--faint); }
+  body { margin:0; background:var(--bg); color:var(--text); font:400 16px/1.6 'Google Sans','Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1200px; margin:0 auto; padding:0 24px; }
+  a { color:var(--blue); text-decoration:none; } a:hover { text-decoration:underline; }
+  small { color:var(--text-2); font-size:13px; font-weight:400; }
 
-  .kpis { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--line); border-bottom:1px solid var(--line); }
-  .kpi { background:var(--panel2); padding:9px 14px; }
-  .kpi .v { font-size:19px; font-weight:650; letter-spacing:-.4px; }
-  .kpi .l { font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+  nav { display:flex; align-items:center; justify-content:space-between; height:64px; }
+  .logo { font-weight:800; font-size:20px; letter-spacing:-.02em; }
+  nav div { display:flex; align-items:center; gap:20px; font-size:14px; }
+  .chip { padding:6px 14px; border:1px solid var(--border); border-radius:9999px; font-size:13px; color:var(--text-2); }
+  .chip.live { color:var(--text); }
+  .chip.live::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 3px rgba(63,255,162,.25); }
 
-  main { display:grid; grid-template-columns:330px minmax(0,1fr) 370px; gap:12px; padding:12px; align-items:start; }
-  .col { display:flex; flex-direction:column; gap:12px; min-width:0; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:9px; overflow:hidden; }
-  .card > h2 {
-    margin:0; padding:8px 12px; font-size:11px; text-transform:uppercase; letter-spacing:.7px;
-    color:var(--dim); border-bottom:1px solid var(--line); background:var(--panel2);
-    display:flex; align-items:center; gap:8px;
-  }
-  .card > h2 .count { margin-left:auto; color:var(--text); font-size:11px; }
-  .body { padding:11px 12px; }
-  .scroll { max-height:250px; overflow-y:auto; }
+  header { background:radial-gradient(ellipse at 70% 30%, rgba(163,213,255,.25) 0%, rgba(167,139,250,.15) 40%, transparent 70%); }
+  .hero { padding:32px 0 40px; max-width:760px; }
+  h1 { margin:0 0 16px; font-size:clamp(32px,4.5vw,48px); font-weight:800; line-height:1.1; letter-spacing:-.02em; }
+  .hero p { margin:0; font-size:18px; color:var(--text-2); }
+  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; padding:0 0 40px; list-style:none; margin:0; }
+  .steps li { font-size:14px; color:var(--text-2); }
+  .steps b { display:block; color:var(--text); font-size:16px; font-weight:600; }
+  .steps span { display:inline-block; margin-bottom:8px; font:500 13px var(--mono); color:var(--blue); }
 
-  /* pipeline */
-  .pipe { display:flex; align-items:stretch; gap:0; padding:14px 12px; }
-  .node {
-    flex:1; border:1px solid var(--line); border-radius:8px; padding:9px 11px;
-    background:var(--panel2); transition:all .18s; position:relative; min-width:0;
-  }
-  .node .t { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
-  .node .n { font-size:13px; font-weight:600; margin:2px 0 3px; }
-  .node .d { font-size:11px; color:var(--faint); min-height:15px; word-break:break-word; }
-  .node.active { border-color:var(--info); background:#0d1b2b; box-shadow:0 0 0 1px var(--info),0 0 20px -6px var(--info); }
-  .node.done { border-color:#1d5a45; }
-  .node.done .n { color:var(--ok); }
-  .node.err { border-color:var(--bad); background:#1e0f14; }
-  .arrow { display:flex; align-items:center; color:var(--faint); padding:0 7px; font-size:15px; }
-  .arrow.lit { color:var(--info); text-shadow:0 0 8px var(--info); }
-  .split { flex:1; display:flex; flex-direction:column; gap:6px; min-width:0; }
-  .sink { border:1px solid var(--line); border-radius:8px; padding:6px 10px; background:var(--panel2); font-size:11.5px; }
-  .sink.hit-ok { border-color:var(--ok); background:#0d1f19; color:var(--ok); }
-  .sink.hit-warn { border-color:var(--warn); background:#221a0c; color:var(--warn); }
+  main { background:var(--bg-subtle); border-top:1px solid var(--border); padding:32px 0 80px; }
+  .grid { display:grid; grid-template-columns:380px 1fr; gap:24px; align-items:start; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:24px; align-items:start; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:16px; box-shadow:0 2px 12px rgba(0,0,0,.06); padding:24px; min-width:0; }
+  h2 { margin:0 0 16px; font-size:18px; font-weight:700; letter-spacing:-.01em; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  h2 .count { font-size:13px; font-weight:500; color:var(--text-2); background:var(--bg-subtle); border-radius:9999px; padding:2px 10px; }
+  h3 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.01em; }
+  h4 { margin:24px 0 8px; font-size:14px; font-weight:600; }
 
-  /* inbox */
-  .inbox { display:flex; flex-wrap:wrap; gap:6px; padding:11px 12px; }
-  .inv {
-    border:1px solid var(--line); border-radius:6px; padding:5px 9px; cursor:pointer;
-    background:var(--panel2); font-size:11.5px; transition:all .15s;
-  }
-  .inv:hover { border-color:var(--info); color:#fff; }
-  .inv.done { opacity:.4; cursor:default; }
-  .inv.done:hover { border-color:var(--line); }
-  .inv.running { border-color:var(--info); background:#0d1b2b; }
-  .inv .dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:var(--faint); }
-  .inv.ok .dot { background:var(--ok); }
-  .inv.exc .dot { background:var(--warn); }
+  .btn { font:500 14px 'Inter',system-ui,sans-serif; padding:10px 20px; border-radius:9999px; border:1.5px solid var(--text); background:var(--text); color:#fff; cursor:pointer; transition:transform .15s, box-shadow .15s, opacity .15s; }
+  .btn:hover:not(:disabled) { transform:scale(1.02); box-shadow:0 4px 14px rgba(0,0,0,.15); }
+  .btn:disabled { opacity:.35; cursor:default; }
+  .btn.ghost { background:transparent; color:var(--text); }
+  .btn.sm { padding:6px 16px; font-size:13px; }
+  .bar { display:flex; gap:8px; margin-top:16px; }
 
-  /* policy tape */
-  .rule { display:flex; gap:8px; padding:5px 0; border-bottom:1px solid #17202c; font-size:12px; }
-  .rule:last-child { border-bottom:0; }
-  .rule .ic { width:15px; flex:none; text-align:center; font-weight:700; }
-  .rule.pass .ic { color:var(--ok); }
-  .rule.fire .ic { color:var(--bad); }
-  .rule.off .ic { color:var(--faint); }
-  .rule .rt { font-weight:600; }
-  .rule.off .rt, .rule.off .rd { color:var(--faint); text-decoration:line-through; }
-  .rule .rd { color:var(--dim); font-size:11.5px; }
+  .rows { display:flex; flex-direction:column; gap:4px; max-height:440px; overflow:auto; margin:0 -8px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%; padding:10px 12px; border:0; border-radius:12px; background:none; font:inherit; text-align:left; cursor:pointer; }
+  .row:hover { background:var(--bg-subtle); }
+  .row.on { background:var(--bg-subtle); box-shadow:inset 0 0 0 1.5px var(--text); }
+  .row b { display:block; font-size:14px; font-weight:600; }
+  .row small { display:block; line-height:1.3; }
+  .badge { flex:none; padding:3px 10px; border-radius:9999px; font-size:12px; font-weight:500; white-space:nowrap; }
+  .badge.ok { background:rgba(63,255,162,.3); color:#064e2e; }
+  .badge.hold { background:rgba(252,169,141,.35); color:#7a2e12; }
+  .badge.no { background:#0d0d0d; color:#fff; }
+  .badge.todo { background:var(--bg-subtle); color:var(--text-2); }
+  .badge.wait { background:rgba(79,142,247,.15); color:#1d4fae; }
 
-  .verdict { padding:8px 12px; font-weight:650; letter-spacing:.4px; display:flex; align-items:center; gap:9px; }
-  .verdict.APPROVE { background:#0d2b21; color:var(--ok); }
-  .verdict.EXCEPTION { background:#2b1f0c; color:var(--warn); }
+  textarea { width:100%; margin-top:8px; padding:12px; border:1px solid var(--border); border-radius:12px; font:13px/1.5 var(--mono); resize:vertical; }
+  textarea:focus { outline:2px solid var(--blue); outline-offset:1px; }
+  .paste { margin-top:20px; padding-top:20px; border-top:1px solid var(--border); }
+  .paste label { font-size:14px; font-weight:600; }
 
-  /* queue + audit */
-  .qitem { border:1px solid #2a2314; background:#161208; border-radius:7px; padding:8px 10px; margin-bottom:7px; }
-  .qitem .top { display:flex; align-items:baseline; gap:7px; }
-  .qitem .amt { margin-left:auto; font-weight:650; }
-  .reason { color:var(--warn); font-size:11px; margin-top:3px; padding-left:11px; text-indent:-11px; }
-  .qact { display:flex; gap:6px; margin-top:7px; }
-  .aud { display:flex; gap:8px; padding:4px 0; font-size:11.5px; border-bottom:1px solid #17202c; }
-  .aud .sid { color:var(--faint); flex:none; }
-  .aud .ev { font-weight:600; flex:none; }
-  .aud.AUTO_APPROVED .ev, .aud.HUMAN_APPROVED .ev, .aud.RELEASED_ON_POLICY_CHANGE .ev { color:var(--ok); }
-  .aud.ROUTED_TO_HUMAN .ev { color:var(--warn); }
-  .aud.HUMAN_REJECTED .ev { color:var(--bad); }
-  .aud .meta { color:var(--dim); margin-left:auto; flex:none; }
+  .verdict { margin:-24px -24px 0; padding:24px; border-radius:16px 16px 0 0; }
+  .verdict p { margin:4px 0 0; }
+  .verdict.ok { background:rgba(63,255,162,.18); }
+  .verdict.hold { background:rgba(252,169,141,.22); }
+  .verdict.no { background:var(--dark); color:#fff; }
+  dl { display:grid; grid-template-columns:110px 1fr; gap:6px 16px; margin:0; font-size:15px; }
+  dt { color:var(--text-2); } dd { margin:0; font-weight:500; }
+  .notes { margin:12px 0 0; padding-left:18px; font-size:13px; color:var(--text-2); }
+  .checks { list-style:none; margin:0; padding:0; }
+  .checks li { display:flex; gap:12px; padding:10px 0; border-top:1px solid var(--border); }
+  .checks b { display:block; font-size:14px; font-weight:600; }
+  .checks i { flex:none; width:20px; height:20px; margin-top:2px; border-radius:50%; background:rgba(63,255,162,.5); position:relative; }
+  .checks i::after { content:"✓"; position:absolute; inset:0; font:700 12px/20px 'Inter',sans-serif; text-align:center; color:#064e2e; }
+  .checks .fire i { background:var(--peach); } .checks .fire i::after { content:"!"; color:#7a2e12; }
+  details { margin-top:20px; font-size:14px; } summary { cursor:pointer; color:var(--blue); }
+  pre { margin:12px 0 0; padding:16px; background:var(--bg-subtle); border-radius:12px; font:13px/1.5 var(--mono); overflow:auto; max-height:320px; }
+  .empty { color:var(--text-2); font-size:15px; margin:12px 0 16px; }
+  .spin { display:inline-block; width:14px; height:14px; margin-right:10px; vertical-align:-2px; border:2px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
 
-  /* budgets */
-  .bud { margin-bottom:9px; }
-  .bud .row { display:flex; font-size:11.5px; margin-bottom:3px; }
-  .bud .row .r { margin-left:auto; color:var(--dim); }
-  .bar { height:7px; background:#1a2432; border-radius:4px; overflow:hidden; position:relative; }
-  .bar i { display:block; height:100%; background:var(--ok); transition:width .5s; }
-  .bar.warn i { background:var(--warn); }
-  .bar.bad i { background:var(--bad); }
-  .bar .ceil { position:absolute; top:-2px; bottom:-2px; width:2px; background:#8fa6c4; opacity:.85; }
+  .item { display:flex; justify-content:space-between; gap:16px; padding:14px 0; border-top:1px solid var(--border); font-size:14px; }
+  .item:first-child { border-top:0; padding-top:0; }
+  .item ul { margin:4px 0 0; padding-left:18px; color:var(--text-2); font-size:13px; }
+  .acts { display:flex; gap:8px; flex:none; align-items:flex-start; }
+  .scroll { max-height:380px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-size:13px; font-weight:500; color:var(--text-2); padding:0 8px 8px 0; }
+  td { padding:8px 8px 8px 0; border-top:1px solid var(--border); }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
 
-  /* controls */
-  .ctl { margin-bottom:11px; }
-  .ctl label { display:flex; font-size:11.5px; color:var(--dim); margin-bottom:3px; }
-  .ctl label b { margin-left:auto; color:var(--text); font-family:ui-monospace,monospace; }
-  input[type=range] { width:100%; accent-color:var(--info); }
-  .toggle { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; cursor:pointer; }
-  .toggle .sw { width:28px; height:15px; border-radius:9px; background:#26313f; position:relative; flex:none; transition:.15s; }
-  .toggle .sw::after { content:""; position:absolute; top:2px; left:2px; width:11px; height:11px; border-radius:50%; background:#7d8ea6; transition:.15s; }
-  .toggle.on .sw { background:#12503c; }
-  .toggle.on .sw::after { left:15px; background:var(--ok); }
-  .vend { display:flex; flex-wrap:wrap; gap:5px; }
-  .vchip { font-size:11px; padding:3px 8px; border-radius:999px; cursor:pointer; border:1px solid #2b3446; background:#141c28; color:var(--faint); }
-  .vchip.on { border-color:#1c6d52; background:#0f2b22; color:var(--ok); }
+  footer { background:var(--dark); color:var(--muted-dark); padding:32px 0; font-size:14px; }
+  footer .wrap { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  footer b { color:#fff; }
 
-  .banner { padding:7px 12px; font-size:11.5px; border-top:1px solid var(--line); }
-  .banner.flip { background:#161d2b; color:var(--info); }
-  .banner.down { background:#2a0f14; color:var(--bad); font-weight:600; }
-
-  .log { max-height:130px; overflow-y:auto; font-size:11px; }
-  .log div { padding:2px 0; border-bottom:1px solid #17202c; color:var(--dim); }
-  .log .dir { color:var(--agent); font-weight:600; }
-  .log .res { color:var(--info); }
-  pre { margin:0; font-size:11px; color:var(--dim); white-space:pre-wrap; word-break:break-word; }
-  .conf { height:6px; background:#1a2432; border-radius:3px; position:relative; margin-top:5px; }
-  .conf i { display:block; height:100%; border-radius:3px; background:var(--ok); transition:width .3s; }
-  .conf.low i { background:var(--bad); }
-  .conf .floor { position:absolute; top:-3px; bottom:-3px; width:2px; background:#8fa6c4; }
-  ::-webkit-scrollbar { width:8px; height:8px; }
-  ::-webkit-scrollbar-thumb { background:#233043; border-radius:4px; }
-  @media (max-width: 1050px) {
-    main { grid-template-columns:minmax(250px, .8fr) minmax(0, 1.4fr); }
-    main > .col:last-child { grid-column:1 / -1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .kpis { grid-template-columns:repeat(4,1fr); }
-  }
-  @media (max-width: 720px) {
-    body { overflow-x:hidden; }
-    header { align-items:flex-start; flex-direction:column; padding:12px; }
-    .chips { margin-left:0; }
-    .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
-    .kpi { min-width:0; padding:8px 10px; }
-    main { display:flex; flex-direction:column; padding:8px; }
-    main > .col { width:100%; }
-    main > .col:last-child { display:flex; }
-    .pipe { overflow-x:auto; padding:11px 8px; }
-    .node { min-width:145px; }
-    .split { min-width:150px; }
-    .arrow { padding:0 4px; }
-    #verdict + .body { grid-template-columns:1fr !important; }
-    .aud { flex-wrap:wrap; }
-    .aud .meta { width:100%; margin-left:0; padding-left:24px; }
-  }
+  @media (max-width:900px) { .grid, .two, .steps { grid-template-columns:1fr; } .hero { padding:32px 0 40px; } }
 </style>
 </head>
 <body>
 
 <header>
-  <div>
-    <h1>Policy-Gated Invoice Exception Router</h1>
-    <div class="hook">The agent extracts. The policy decides. A human gets everything it will not sign for.</div>
+  <div class="wrap">
+    <nav>
+      <span class="logo">Soren</span>
+      <div><span class="chip" id="mode">Offline reader</span><a href="https://github.com/apraba05/soren">GitHub</a></div>
+    </nav>
+    <div class="hero">
+      <h1>The model reads the invoice. The rules decide.</h1>
+      <p>Soren reads a legal invoice, checks it against six billing rules, and pays it only if every rule passes. Everything else goes to a person, with the reasons.</p>
+    </div>
+    <ol class="steps">
+      <li><span>01</span><b>Read</b>Gemini extracts the vendor, total, matter and line items.</li>
+      <li><span>02</span><b>Check</b>Plain Python rules decide. The model never approves anything.</li>
+      <li><span>03</span><b>Route</b>Approved, or queued for a reviewer. Every decision is logged.</li>
+    </ol>
   </div>
-  <div class="chips" id="runtime"></div>
 </header>
 
-<div class="kpis" id="kpis"></div>
-
-<div class="card" style="margin:12px 12px 0">
-  <h2>Decision pipeline <span class="count" id="pipeStatus">idle</span></h2>
-  <div class="pipe">
-    <div class="node" id="n-intake"><div class="t">1 &middot; intake</div><div class="n">Invoice</div><div class="d" id="d-intake">waiting</div></div>
-    <div class="arrow" id="a-1">&#9654;</div>
-    <div class="node" id="n-extract"><div class="t">2 &middot; MCP tool</div><div class="n">extract_invoice_fields</div><div class="d" id="d-extract">LLM extraction</div></div>
-    <div class="arrow" id="a-2">&#9654;</div>
-    <div class="node" id="n-policy"><div class="t">3 &middot; MCP tool</div><div class="n">check_billing_policy</div><div class="d" id="d-policy">policy.yaml, deterministic</div></div>
-    <div class="arrow" id="a-3">&#9654;</div>
-    <div class="split">
-      <div class="sink" id="s-approve">&#10003; auto-approve &rarr; audit stream</div>
-      <div class="sink" id="s-human">&#9873; human queue &rarr; Redis LIST</div>
-    </div>
-  </div>
-  <div class="banner down" id="redisBanner" style="display:none"></div>
-</div>
-
 <main>
-  <!-- ---------------- controls ---------------- -->
-  <div class="col">
-    <div class="card">
-      <h2>Break it</h2>
-      <div class="body">
-        <button class="danger" id="btnDrift" style="width:100%;margin-bottom:7px">Inject model drift</button>
-        <button class="danger" id="btnRedis" style="width:100%">Kill Redis</button>
-        <div style="font-size:11px;color:var(--faint);margin-top:8px">
-          Drift lowers extraction confidence, so the policy stops trusting the model and everything
-          routes to a human. Killing Redis buffers audit writes and replays them on restore.
+  <div class="wrap">
+    <div class="grid">
+      <section class="card">
+        <h2>Invoices</h2>
+        <div class="rows" id="inbox"></div>
+        <div class="bar">
+          <button class="btn sm" id="btnAll">Run the rest</button>
+          <button class="btn sm ghost" id="btnReset">Reset</button>
         </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>policy.yaml <span class="count" id="polver"></span></h2>
-      <div class="body">
-        <div class="ctl">
-          <label>Auto-approval ceiling <b id="lblCeil"></b></label>
-          <input type="range" id="ceil" min="1000" max="25000" step="250">
+        <div class="paste">
+          <label for="pasteText">Or paste your own</label>
+          <textarea id="pasteText" rows="5" maxlength="8000" placeholder="Vendor name&#10;Matter: MAT-1042&#10;  Research   900.00&#10;  TOTAL DUE  $900.00"></textarea>
+          <div class="bar"><button class="btn sm" id="btnPaste">Run it</button></div>
         </div>
-        <div class="ctl">
-          <label>Confidence floor <b id="lblConf"></b></label>
-          <input type="range" id="conf" min="0.3" max="0.99" step="0.01">
+      </section>
+
+      <section class="card" id="detail"></section>
+    </div>
+
+    <div class="two">
+      <section class="card">
+        <h2>Waiting for review <span class="count" id="queueCount">0</span></h2>
+        <div class="scroll" id="queue"></div>
+      </section>
+      <section class="card">
+        <h2>Audit log <span class="count" id="auditCount">0</span></h2>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>#</th><th>Event</th><th>Invoice</th><th class="num">Total</th><th>By</th></tr></thead>
+            <tbody id="audit"></tbody>
+          </table>
         </div>
-        <div class="ctl">
-          <label>Matter budget ceiling <b id="lblBud"></b></label>
-          <input type="range" id="bud" min="0.5" max="1" step="0.05">
-        </div>
-        <div id="rules"></div>
-        <div style="font-size:11px;color:var(--dim);margin:9px 0 5px">Approved vendor panel</div>
-        <div class="vend" id="vendors"></div>
-        <button class="tiny" id="btnRescore" style="width:100%;margin-top:10px">Re-score held queue against new policy</button>
-      </div>
-      <div class="banner flip" id="flipBanner" style="display:none"></div>
-    </div>
-  </div>
-
-  <!-- ---------------- centre ---------------- -->
-  <div class="col">
-    <div class="card">
-      <h2>Invoice inbox
-        <span class="count">
-          <button class="tiny primary" id="btnAll">Run all pending</button>
-          <button class="tiny" id="btnReset">Reset</button>
-        </span>
-      </h2>
-      <div class="inbox" id="inbox"></div>
-      <details class="mine" id="mineBox">
-        <summary>Try your own invoice</summary>
-        <textarea id="mineText" class="mono" rows="7" maxlength="8000" placeholder="Paste invoice text: vendor, matter (MAT-####), line items and a total"></textarea>
-        <button class="tiny primary" id="btnMine">Run it</button>
-        <span class="minenote" id="mineNote"></span>
-      </details>
-    </div>
-
-    <div class="card">
-      <h2>Live decision <span class="count" id="liveId"></span></h2>
-      <div class="verdict" id="verdict" style="display:none"></div>
-      <div class="body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <div style="font-size:11px;color:var(--dim);margin-bottom:5px">Raw invoice text</div>
-          <pre class="mono scroll" id="rawText" style="max-height:190px">click an invoice above</pre>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--dim);margin-bottom:5px">Model output (parsed JSON)</div>
-          <pre class="mono scroll" id="fields" style="max-height:150px">&mdash;</pre>
-          <div style="font-size:11px;color:var(--dim);margin-top:7px">confidence <b id="confVal" class="mono">&mdash;</b></div>
-          <div class="conf" id="confBar"><i style="width:0"></i><div class="floor"></div></div>
-        </div>
-      </div>
-      <h2>Policy tape &mdash; every rule, every reason</h2>
-      <div class="body" id="tape"><span style="color:var(--faint)">no evaluation yet</span></div>
-    </div>
-
-    <div class="card">
-      <h2>MCP traffic <span class="count mono" id="toolNames"></span></h2>
-      <div class="body log mono" id="mcplog"></div>
-    </div>
-  </div>
-
-  <!-- ---------------- right ---------------- -->
-  <div class="col">
-    <div class="card">
-      <h2>Human queue <span class="count mono" id="qlen"></span></h2>
-      <div class="body scroll" id="queue" style="max-height:330px"></div>
-    </div>
-
-    <div class="card">
-      <h2>Audit stream <span class="count mono" id="alen"></span></h2>
-      <div class="body scroll mono" id="audit" style="max-height:250px"></div>
-    </div>
-
-    <div class="card">
-      <h2>Matter budgets</h2>
-      <div class="body" id="budgets"></div>
+      </section>
     </div>
   </div>
 </main>
 
-<script>
-const $ = id => document.getElementById(id);
-const money = n => n == null ? "-" : "$" + Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
-let S = null, running = null;
+<footer>
+  <div class="wrap">
+    <span><b>Soren</b> · Ashan Prapaharan · SE4452A</span>
+    <span>90 tests · 38 of 38 planted bugs caught</span>
+  </div>
+</footer>
 
-/* ------------------------------------------------------------------ render */
-
-function render(s) {
-  S = s;
-  const m = s.metrics, f = s.faults;
-
-  $("runtime").innerHTML = [
-    ["model", s.runtime.model.startsWith("anthropic.") ? s.runtime.model.split(".").pop().split("-")[0] : s.runtime.model],
-    ["extraction", {gemini:"live", simulated:"offline reader"}[s.runtime.bedrock] || s.runtime.bedrock],
-    ["redis", s.runtime.redis],
-    ["policy", "v" + s.policy.version],
-  ].map(([k,v]) => `<span class="chip">${k} <b>${v}</b></span>`).join("");
-
-  $("kpis").innerHTML = [
-    ["Processed", m.processed],
-    ["Auto-approved", m.auto_approved],
-    ["Sent to human", m.exceptions],
-    ["Auto rate", m.auto_rate + "%"],
-    ["Paid without a human", money(m.usd_auto_approved)],
-    ["Held for review", money(m.usd_held)],
-    ["Review mins saved", m.minutes_saved],
-  ].map(([l,v]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
-
-  $("inbox").innerHTML = s.invoices.map(i => {
-    const d = s.decisions.find(x => x.invoice_id === i.id);
-    const cls = !i.done ? "" : (d && d.status.indexOf("APPROVE") === 0 ? "done ok" : "done exc");
-    return `<div class="inv ${cls} ${running===i.id?"running":""}" data-id="${i.id}"><span class="dot"></span>${i.id}</div>`;
-  }).join("");
-
-  $("polver").textContent = "v" + s.policy.version;
-  const ceil = ruleParam(s,"amount_ceiling","max_auto_approve");
-  const conf = ruleParam(s,"extraction_confidence","min_confidence");
-  const bud  = ruleParam(s,"matter_budget","utilization_ceiling");
-  setSlider("ceil", ceil, money(ceil));
-  setSlider("conf", conf, conf.toFixed(2));
-  setSlider("bud", bud, Math.round(bud*100) + "%");
-
-  $("rules").innerHTML = s.policy.rules.map(r =>
-    `<div class="toggle ${r.enabled?"on":""}" data-rule="${r.id}"><span class="sw"></span>${r.title}</div>`).join("");
-
-  const seen = new Set(s.policy.approved_vendors);
-  s.decisions.forEach(d => d.vendor && seen.add(d.vendor));
-  $("vendors").innerHTML = [...seen].sort().map(v =>
-    `<span class="vchip ${s.policy.approved_vendors.includes(v)?"on":""}" data-v="${v}">${v}</span>`).join("");
-
-  const flips = s.whatif;
-  $("flipBanner").style.display = flips.length ? "block" : "none";
-  if (flips.length) $("flipBanner").innerHTML =
-    `under this policy <b>${flips.length}</b> already-decided invoice(s) would flip: ` +
-    flips.map(x => `${x.invoice_id} ${x.from}&rarr;${x.to}`).join(", ");
-
-  $("qlen").textContent = s.queue.length + " waiting";
-  $("queue").innerHTML = s.queue.length ? s.queue.map(q => `
-    <div class="qitem">
-      <div class="top"><b>${q.invoice_id}</b><span style="color:var(--dim)">${q.vendor||"?"}</span>
-        <span class="amt">${money(q.amount)}</span></div>
-      <div style="font-size:11px;color:var(--faint)">${q.matter_id||"no matter"} &middot; confidence ${q.confidence}</div>
-      ${q.reasons.map(r => `<div class="reason">&#9888; ${r}</div>`).join("")}
-      <div class="qact">
-        <button class="tiny primary" data-ok="${q.invoice_id}">Approve</button>
-        <button class="tiny danger" data-no="${q.invoice_id}">Reject</button>
-      </div>
-    </div>`).join("") : `<span style="color:var(--faint)">queue empty</span>`;
-
-  $("alen").textContent = s.store.audit_len + " entries" + (s.store.buffered ? " (+" + s.store.buffered + " buffered)" : "");
-  $("audit").innerHTML = s.audit.map(a => `
-    <div class="aud ${a.event}">
-      <span class="sid">${(a.stream_id||"").split("-")[1]}</span>
-      <span class="ev">${a.event}</span>
-      <span>${a.invoice_id}</span>
-      <span class="meta">${money(a.amount)} &middot; ${a.actor}</span>
-    </div>`).join("");
-
-  $("budgets").innerHTML = s.matters.map(b => {
-    const cls = b.utilisation >= bud*100 ? "bad" : b.utilisation >= bud*100-15 ? "warn" : "";
-    return `<div class="bud">
-      <div class="row"><span>${b.id}</span><span class="r">${money(b.spent)} / ${money(b.budget)} &middot; ${b.utilisation}%</span></div>
-      <div class="bar ${cls}"><i style="width:${Math.min(b.utilisation,100)}%"></i><div class="ceil" style="left:${bud*100}%"></div></div>
-    </div>`;
-  }).join("");
-
-  $("toolNames").textContent = s.tools.map(t => t.name).join("  ");
-  $("btnDrift").classList.toggle("on", f.llm_degraded);
-  $("btnDrift").textContent = f.llm_degraded ? "Model drift ACTIVE - clear it" : "Inject model drift";
-  $("btnRedis").classList.toggle("on", f.redis_down);
-  $("btnRedis").textContent = f.redis_down ? "Redis DOWN - bring it back" : "Kill Redis";
-  $("redisBanner").style.display = f.redis_down ? "block" : "none";
-  $("redisBanner").textContent =
-    "Redis unreachable - " + s.store.buffered + " audit write(s) buffered in memory, nothing dropped. "
-    + "The queue and stream below are frozen until it is back.";
-  $("btnAll").disabled = s.runtime.pending === 0;
-}
-
-const ruleParam = (s,id,p) => s.policy.rules.find(r => r.id === id).params[p];
-function setSlider(id, value, label) {
-  if (document.activeElement !== $(id)) $(id).value = value;
-  $({ceil:"lblCeil",conf:"lblConf",bud:"lblBud"}[id]).textContent = label;
-}
-
-/* ------------------------------------------------------------------ live */
-
-const STAGES = ["intake","extract","policy"];
-function resetPipe() {
-  STAGES.forEach(s => { $("n-"+s).className = "node"; });
-  [1,2,3].forEach(i => $("a-"+i).classList.remove("lit"));
-  $("s-approve").className = "sink"; $("s-human").className = "sink";
-  $("tape").innerHTML = ""; $("verdict").style.display = "none";
-  $("fields").textContent = "..."; $("confVal").textContent = "-";
-  $("confBar").querySelector("i").style.width = "0";
-}
-
-function onStage(e) {
-  if (e.stage === "route") {
-    const ok = e.decision_status === "APPROVE";
-    $("s-" + (ok ? "approve" : "human")).className = "sink " + (ok ? "hit-ok" : "hit-warn");
-    $("pipeStatus").textContent = e.invoice_id + " - " + (ok ? "auto-approved" : "sent to human");
-    running = null;
-    return;
-  }
-  const node = $("n-" + e.stage);
-  if (!node) return;
-  $("pipeStatus").textContent = e.invoice_id + " - " + e.stage;
-  if (e.status === "active") {
-    node.className = "node active";
-    $("a-" + (STAGES.indexOf(e.stage) || 1)).classList.add("lit");
-  } else {
-    node.className = "node done";
-    $("a-" + (STAGES.indexOf(e.stage) + 1)) && $("a-" + (STAGES.indexOf(e.stage) + 1)).classList.add("lit");
-  }
-  $("d-" + e.stage).textContent = e.detail;
-
-  if (e.fields) {
-    $("fields").textContent = JSON.stringify({
-      vendor: e.fields.vendor, amount: e.fields.amount, matter_id: e.fields.matter_id,
-      line_items: (e.fields.line_items||[]).length, confidence: e.fields.confidence,
-      notes: e.fields.notes
-    }, null, 1);
-    const c = e.fields.confidence, floor = ruleParam(S,"extraction_confidence","min_confidence");
-    $("confVal").textContent = c;
-    $("confBar").className = "conf" + (c < floor ? " low" : "");
-    $("confBar").querySelector("i").style.width = (c*100) + "%";
-    $("confBar").querySelector(".floor").style.left = (floor*100) + "%";
-  }
-}
-
-function onCheck(c) {
-  const icon = c.status === "fire" ? "&#10007;" : c.status === "off" ? "&#8212;" : "&#10003;";
-  $("tape").insertAdjacentHTML("beforeend",
-    `<div class="rule ${c.status}"><span class="ic">${icon}</span>
-       <span><span class="rt">${c.title}</span> &middot; <span class="rd">${c.detail}</span></span></div>`);
-}
-
-function onDecision(r) {
-  const v = $("verdict");
-  v.style.display = "flex"; v.className = "verdict " + r.status;
-  v.innerHTML = r.status === "APPROVE"
-    ? `&#10003; APPROVE &middot; ${r.invoice_id} &middot; ${money(r.amount)} to ${r.vendor} &middot; ${r.latency_ms} ms`
-    : `&#9873; EXCEPTION &middot; ${r.invoice_id} &middot; ${r.reasons.length} rule(s) fired &middot; ${r.latency_ms} ms`;
-}
-
-function logMcp(e) {
-  const line = e.direction === "request"
-    ? `<span class="dir">&rarr; ${e.method}</span> ${e.tool} ${JSON.stringify(e.payload)}`
-    : `<span class="res">&larr; result</span> ${e.tool} ${JSON.stringify(e.payload)}`;
-  const box = $("mcplog");
-  box.insertAdjacentHTML("afterbegin", `<div>${line}</div>`);
-  while (box.children.length > 40) box.lastChild.remove();
-}
-
-</script>
-<script src="./app.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

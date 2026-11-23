@@ -10,6 +10,7 @@ and the browser watches each hop happen:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import queue
@@ -26,6 +27,12 @@ import policy as policy_module
 import store as store_module
 
 ROOT = Path(__file__).parent
+
+# The page in web/ is the same one the live site serves; api/extract.py is its
+# extraction endpoint (a Vercel function there, a plain route here).
+_spec = importlib.util.spec_from_file_location("extract_api", ROOT / "api" / "extract.py")
+extract_api = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(extract_api)
 PORT = int(os.environ.get("PORT", "8000"))
 PACE = float(os.environ.get("PACE", "0.16"))  # seconds between visible hops
 
@@ -398,7 +405,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
-            return self._send((ROOT / "index.html").read_bytes(), ctype="text/html; charset=utf-8")
+            return self._send((ROOT / "web" / "index.html").read_bytes(), ctype="text/html; charset=utf-8")
+        if path == "/app.js":
+            return self._send((ROOT / "web" / "app.js").read_bytes(), ctype="text/javascript; charset=utf-8")
+        if path == "/api/extract":
+            status, payload = extract_api.handle("GET", b"", self.client_address[0])
+            return self._send(payload, code=status)
         if path == "/api/state":
             return self._send(ROUTER.snapshot())
         if path == "/api/events":
@@ -408,7 +420,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length") or 0)
-        body = json.loads(self.rfile.read(length) or "{}")
+        raw = self.rfile.read(length)
+        if path == "/api/extract":
+            status, payload = extract_api.handle("POST", raw, self.client_address[0])
+            return self._send(payload, code=status)
+        body = json.loads(raw or "{}")
 
         if path == "/api/run":
             ids = body.get("invoice_ids") or [body["invoice_id"]]

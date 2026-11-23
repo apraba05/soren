@@ -9,7 +9,7 @@ __pycache__
 /tests
 /scripts
 /app.py
-/index.html
+
 /mcp_server.py
 /mcp_tools.py
 /store.py

@@ -1,7 +1,5 @@
 "use strict";
 
-const MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0";
-const PACE = 160;
 const EXTRACTION_PROMPT = `You are a legal-billing intake assistant.
 
 Read the invoice below and return ONLY a JSON object with this schema:
@@ -42,12 +40,6 @@ const INITIAL_POLICY = {
   }
 };
 
-const TOOLS = [
-  {name:"extract_invoice_fields",description:"Extract vendor, amount, matter id and line items from raw invoice text. Returns a confidence score. Does not approve anything.",inputSchema:{type:"object",properties:{invoice_text:{type:"string"}},required:["invoice_text"]}},
-  {name:"check_billing_policy",description:"Evaluate extracted invoice fields against policy.yaml. Returns APPROVE or EXCEPTION with a reason for every rule that fired.",inputSchema:{type:"object",properties:{vendor:{type:"string"},amount:{type:"number"},matter_id:{type:["string","null"]},confidence:{type:"number"},line_items:{type:"array"}},required:["amount","confidence"]}},
-  {name:"list_exception_queue",description:"List invoices currently waiting on a human decision.",inputSchema:{type:"object",properties:{}}}
-];
-
 const SEED_INVOICES = [{"id":"INV-2291","file":"wexler_cole_july.pdf","text":"WEXLER & COLE LLP\n1 Battery Park Plaza, New York, NY 10004\n\n                            INVOICE\n\nInvoice No:       WC-2291\nInvoice Date:     2026-07-31\nClient Matter:    MAT-1042 / Acme Robotics v. Nordic Systems\nBilling Period:   July 2026\n\nPROFESSIONAL SERVICES\n  L120  Analysis/Strategy          6.5 hrs @ $410.00      2,665.00\n  L210  Pleadings                  2.0 hrs @ $410.00        820.00\n\nDISBURSEMENTS\n  E106  Online research                                      94.00\n\n                     TOTAL DUE (USD)                    $3,579.00\n\nPayment due within 30 days per outside counsel guidelines."},{"id":"INV-2292","file":"bramwell_hastings_q3.pdf","text":"Bramwell Hastings LLP\nStatement of Account\n\nMatter ID ......... MAT-2287\nMatter Name ....... Series C Financing\nInvoice ........... BH-88104\nDate .............. 2026-08-03\n\n  Partner   J. Bramwell     11.0 hrs   $875/hr      9,625.00\n  Associate  R. Okafor      14.5 hrs   $520/hr      7,540.00\n  Paralegal  D. Ruiz         6.0 hrs   $210/hr      1,260.00\n\n  Subtotal                                         18,425.00\n  Less negotiated discount (8%)                    -1,474.00\n\n  AMOUNT PAYABLE USD                              16,951.00"},{"id":"INV-2293","file":"ridgeline_ediscovery_aug.pdf","text":"RIDGELINE eDISCOVERY INC.\nData processing & hosting services\n\nBill To: Legal Operations\nMatter: MAT-1042\nInvoice #: RE-40219   Date: 2026-08-05\n\n  Processing, 412 GB @ $9.50/GB ................ 3,914.00\n  Hosting, 1.2 TB, monthly ....................... 480.00\n\n  TOTAL DUE: $4,394.00\n\nTerms: Net 45."},{"id":"INV-2294","file":"tanaka_ip_partners_aug.pdf","text":"TANAKA IP PARTNERS\nIntellectual Property Counsel | Tokyo * Palo Alto\n\nINVOICE TIP-7731                     Issued 2026-08-06\nMatter Reference: MAT-1042\n\n  Claim chart preparation      8.0 hrs @ $560.00     4,480.00\n  Prior art review             3.5 hrs @ $560.00     1,960.00\n  E110 Out-of-town travel (airfare, business)          2,180.00\n\n  TOTAL AMOUNT DUE (USD)                            $8,620.00"},{"id":"INV-2295","file":"orion_court_reporting.pdf","text":"ORION COURT REPORTING\nCertified transcripts and videography\n\nInvoice OCR-1188 | 2026-08-07 | Matter MAT-3310\n\n  Deposition transcript, 214 pages @ $4.15 ......... 888.10\n  Rough draft, same day ............................ 165.00\n  Videographer, 4 hrs @ $95.00 ..................... 380.00\n\n  TOTAL DUE (USD) $1,433.10"},{"id":"INV-2296","file":"vector_legal_staffing.pdf","text":"VECTOR LEGAL STAFFING\nContract attorney placement\n\nINVOICE VLS-5540\nDATE 2026-08-08\nMATTER MAT-4455 (EU Data Privacy Audit)\n\n  Contract review, 6 reviewers x 38 hrs @ $72/hr .... 16,416.00\n  Project management fee ............................. 1,800.00\n\n  TOTAL 18,216.00 USD"},{"id":"INV-2297","file":"delacroix_boone_scan.pdf","text":"DELACROIX & B00NE\n       -- scanned copy, fax quality --\n\nInvoice  DB-0 9 12          Date  2026/08/09\nMatter   MA T-  ????\n\n  Corporate governance advice     4.0 hr5   1,840.OO\n  Board minute drafting           2.5 hrs     1,150.00\n\n  T0TAL  DUE     $  2,99O.00\n\n(margin note, handwritten) confirm matter w/ K. Adeyemi"},{"id":"INV-2298","file":"wexler_cole_aug_supplemental.pdf","text":"WEXLER & COLE LLP\n\n                            INVOICE\n\nInvoice No:       WC-2314\nInvoice Date:     2026-08-10\nClient Matter:    MAT-3310 / Hollis Employment Arbitration\n\nPROFESSIONAL SERVICES\n  L390  Other discovery            3.0 hrs @ $410.00      1,230.00\n  A101  Plan and prepare (admin)   1.5 hrs @ $410.00        615.00\n  L440  Other trial preparation    2.0 hrs @ $410.00        820.00\n\n                     TOTAL DUE (USD)                    $2,665.00"},{"id":"INV-2299","file":"halcyon_trial_graphics.pdf","text":"HALCYON TRIAL GRAPHICS\nDemonstratives & courtroom presentation\n\nInvoice HTG-2077  //  2026-08-11  //  Matter MAT-1042\n\n  Animation storyboard, 3 scenes .................. 6,300.00\n  Exhibit board printing, 22 boards ............... 1,540.00\n  Rush surcharge .................................... 900.00\n\n  TOTAL DUE (USD) $8,740.00"},{"id":"INV-2300","file":"bramwell_hastings_diligence.pdf","text":"Bramwell Hastings LLP\nStatement of Account\n\nMatter ID ......... MAT-5001\nMatter Name ....... Project Ferrous / M&A Diligence\nInvoice ........... BH-88266\nDate .............. 2026-08-12\n\n  Partner   J. Bramwell      4.0 hrs   $875/hr      3,500.00\n  Associate  L. Vance        2.5 hrs   $520/hr      1,300.00\n\n  AMOUNT PAYABLE USD                                4,800.00"},{"id":"INV-2301","file":"tanaka_ip_partners_filing.pdf","text":"TANAKA IP PARTNERS\n\nINVOICE TIP-7802                     Issued 2026-08-13\nMatter Reference: MAT-1042\n\n  Office action response       2.0 hrs @ $560.00     1,120.00\n  USPTO filing fee                                      800.00\n\n  TOTAL AMOUNT DUE (USD)                            $1,920.00"},{"id":"INV-2302","file":"orion_court_reporting_2.pdf","text":"ORION COURT REPORTING\n\nInvoice OCR-1204 | 2026-08-14 | Matter MAT-3310\n\n  Deposition transcript, 96 pages @ $4.15 .......... 398.40\n  Exhibit scanning ................................. 120.00\n\n  TOTAL DUE (USD) $518.40"},{"id":"INV-2303","file":"delacroix_boone_aug.pdf","text":"DELACROIX & BOONE\nCorporate & Governance\n\nInvoice DB-0944            Date 2026-08-15\nMatter MAT-5001 / Project Ferrous\n\n  Diligence memo             9.0 hrs @ $455.00      4,095.00\n  Signing checklist          2.0 hrs @ $455.00        910.00\n\n  TOTAL DUE     $5,005.00"},{"id":"INV-2304","file":"wexler_cole_privacy.pdf","text":"WEXLER & COLE LLP\n\n                            INVOICE\n\nInvoice No:       WC-2330\nInvoice Date:     2026-08-16\nClient Matter:    MAT-4455 / EU Data Privacy Audit\n\nPROFESSIONAL SERVICES\n  L110  Fact investigation        5.0 hrs @ $410.00      2,050.00\n  L120  Analysis/Strategy         2.0 hrs @ $410.00        820.00\n\n                     TOTAL DUE (USD)                    $2,870.00"}];
 const PRESEED_IDS = ["INV-2291","INV-2292","INV-2293","INV-2294","INV-2295"];
 const BY_ID = Object.fromEntries(SEED_INVOICES.map(i => [i.id, i]));
@@ -56,7 +48,6 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const fmt = n => Number(n).toLocaleString(undefined,{minimumFractionDigits:Number.isInteger(Number(n))?0:2,maximumFractionDigits:2});
 
-let state, jobChain = Promise.resolve(), generation = 0;
 
 function key(name) { return (name || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
 function check(rule, fired, detail) { return {id:rule.id,title:rule.title,status:fired?"fire":"pass",detail}; }
@@ -152,120 +143,199 @@ function readInvoice(document) {
   return {vendor,amount:amount==null?null:round2(amount),currency:"USD",matter_id,line_items,confidence:round2(Math.max(confidence,.05)),notes};
 }
 
-function rngFor(text) {
-  let h=2166136261; for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}
-  return ()=>{h+=0x6D2B79F5;let t=h;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};
-}
-
-function extract(document, quiet=false) {
-  const prompt=EXTRACTION_PROMPT.replace("{document}",document), random=rngFor(document);
-  let fields=readInvoice(prompt);
-  if(state.faults.llm_degraded)fields=degrade(fields,random);
-  const raw_output=JSON.stringify(fields,null,2), usage={inputTokens:Math.max(1,Math.floor(prompt.length/4)),outputTokens:Math.max(1,Math.floor(raw_output.length/4))};
-  usage.totalTokens=usage.inputTokens+usage.outputTokens;
-  return {fields,prompt,raw_output,usage,latency_ms:quiet?0:Math.floor(220+random()*280+(state.faults.llm_degraded?150:0)),model_id:MODEL_ID,backend:"simulated"};
-}
-
-function degrade(fields,random){
-  fields=clone(fields);fields.confidence=round2(.31+random()*(.62-.31));if(fields.amount!=null)fields.amount=round2(fields.amount*(.55+random()*.9));if(random()<.4)fields.matter_id=null;fields.notes=[...(fields.notes||[]),"model returned unstable fields"];return fields;
-}
-
-// The live model runs behind /api/extract (Vercel function) so the API key
+// --- extraction ---------------------------------------------------------------
+// The live model runs behind /api/extract (a Vercel function), so the API key
 // never reaches the browser. Opened as a file, or if the call fails, the
 // in-browser reader above answers instead.
-const LIVE = {live:false, model:MODEL_ID};
-async function checkLive(){
-  if(location.protocol==="file:")return;
-  try{const r=await fetch("/api/extract");if(r.ok){const j=await r.json();LIVE.live=!!j.live;if(j.live)LIVE.model=j.model;}}catch(e){}
-  render(snapshot());
+const LIVE = {on: false, model: null};
+
+async function checkLive() {
+  if (location.protocol === "file:") return;
+  try {
+    const r = await fetch("/api/extract");
+    if (r.ok) { const j = await r.json(); LIVE.on = !!j.live; LIVE.model = j.model; }
+  } catch (e) { /* stays offline */ }
 }
 
-async function extractLive(document, quiet=false) {
-  if(quiet||!LIVE.live)return extract(document,quiet);
-  try{
-    const r=await fetch("/api/extract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:document})});
-    const j=await r.json();
-    if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
-    if(state.faults.llm_degraded){j.fields=degrade(j.fields,rngFor(document));j.raw_output=JSON.stringify(j.fields,null,2);}
-    j.live=true;return j;
-  }catch(e){
-    const out=extract(document,quiet);
-    out.fields.notes=[...(out.fields.notes||[]),`live model unavailable (${e.message}); read by the in-browser reader`];
-    addLog("warn",`live model unavailable: ${e.message}`);
-    return out;
+function extractOffline(text, note) {
+  const fields = readInvoice(text);
+  if (note) fields.notes.push(note);
+  return {fields, backend: "offline"};
+}
+
+async function extract(text, offline) {
+  if (offline || !LIVE.on) return extractOffline(text);
+  try {
+    const r = await fetch("/api/extract", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({text})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    return {fields: j.fields, backend: j.backend};
+  } catch (e) {
+    return extractOffline(text, `live model unavailable (${e.message}); read by the offline reader`);
   }
 }
 
-function nextStreamId(){state.seq++;return `${Date.now()}-${state.seq}`;}
-function doStore(op,payload){
-  if(op==="audit")state.auditRaw.push({...clone(payload),stream_id:nextStreamId()});
-  else if(op==="queue")state.queue.unshift(clone(payload));
-}
-function storeWrite(op,payload){if(!state.store.up){state.buffer.push([op,clone(payload)]);return true;}doStore(op,payload);return false;}
-function appendAudit(entry){return storeWrite("audit",{...entry,ts:entry.ts||Date.now()/1000});}
-function pushException(item){return storeWrite("queue",item);}
-function popException(id){const n=state.queue.findIndex(q=>q.invoice_id===id);return n<0?null:state.queue.splice(n,1)[0];}
+// --- state --------------------------------------------------------------------
+let state, selected = null, generation = 0, jobs = Promise.resolve(), pasted = 0;
+const running = new Set();
 
-async function emitStage(event){onStage(event);render(snapshot());await sleep(PACE);}
-function emitMcp(event){logMcp(event);}
-
-async function processInvoice(invoice, quiet=false, token=generation) {
-  const started=performance.now();
-  const hop=async(stage,status,detail="",extra={})=>{if(!quiet){await emitStage({invoice_id:invoice.id,stage,status,detail,...extra});if(token!==generation)throw new Error("reset");}};
-  try {
-    await hop("intake","active",`${invoice.id} (${invoice.file})`);
-    await hop("extract","active","tools/call extract_invoice_fields");
-    if(!quiet)emitMcp({direction:"request",method:"tools/call",tool:"extract_invoice_fields",payload:{invoice_text:invoice.text.slice(0,80)+" ..."}});
-    const extraction=await extractLive(invoice.text,quiet), fields=extraction.fields; state.tokens+=extraction.usage.totalTokens;
-    if(!quiet){if(!extraction.live)await sleep(extraction.latency_ms);emitMcp({direction:"response",method:"tools/call",tool:"extract_invoice_fields",is_error:false,payload:{vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence}});}
-    await hop("extract","done",`${extraction.usage.totalTokens} tokens, ${extraction.latency_ms} ms`,{fields,prompt:extraction.prompt,raw_output:extraction.raw_output,usage:extraction.usage});
-    await hop("policy","active","tools/call check_billing_policy");
-    if(!quiet)emitMcp({direction:"request",method:"tools/call",tool:"check_billing_policy",payload:{vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence}});
-    const verdict=policyCheck(fields,state.policy,state.spend);
-    if(!quiet){for(const c of verdict.checks){onCheck(c);await sleep(PACE/2);}emitMcp({direction:"response",method:"tools/call",tool:"check_billing_policy",is_error:false,payload:{status:verdict.status,reasons:verdict.reasons}});}
-    await hop("policy","done",verdict.status,{checks:verdict.checks});
-    const elapsed=Math.floor(performance.now()-started), record={invoice_id:invoice.id,file:invoice.file,vendor:fields.vendor,amount:fields.amount,matter_id:fields.matter_id,confidence:fields.confidence,status:verdict.status,reasons:verdict.reasons,checks:verdict.checks,notes:fields.notes||[],line_items:fields.line_items||[],policy_version:verdict.policy_version,model:extraction.model_id,backend:extraction.backend,latency_ms:elapsed,decided_at:Date.now()/1000};
-    const approved=verdict.status==="APPROVE";if(approved&&state.spend[record.matter_id]!=null)state.spend[record.matter_id]+=record.amount||0;
-    const buffered=appendAudit({invoice_id:invoice.id,actor:"agent",event:approved?"AUTO_APPROVED":"ROUTED_TO_HUMAN",status:verdict.status,vendor:record.vendor,amount:record.amount,matter_id:record.matter_id,confidence:record.confidence,reasons:verdict.reasons,policy_version:verdict.policy_version});
-    if(!approved)pushException({invoice_id:invoice.id,file:invoice.file,vendor:record.vendor,amount:record.amount,matter_id:record.matter_id,confidence:record.confidence,reasons:verdict.reasons,queued_at:Date.now()/1000});
-    state.decisions.push(record);state.latencies.push(elapsed);state.pending.delete(invoice.id);
-    await hop("route","done",approved?"auto-approved":"queued for human review",{decision_status:verdict.status,buffered});
-    if(!quiet){onDecision(record);render(snapshot());}
-    return record;
-  } catch(err) { if(err.message!=="reset")addLog("error",`${invoice.id} failed: ${err.message}`); return null; }
+function newState() {
+  const spend = {};
+  for (const [id, m] of Object.entries(INITIAL_POLICY.matters)) spend[id] = m.spent_to_date;
+  return {spend, records: {}, queue: [], audit: []};
 }
 
-function metrics(){const approved=state.decisions.filter(d=>["APPROVE","HUMAN_APPROVED"].includes(d.status)),auto=state.decisions.filter(d=>d.status==="APPROVE");return{processed:state.decisions.length,auto_approved:auto.length,exceptions:state.decisions.filter(d=>d.status==="EXCEPTION").length,auto_rate:state.decisions.length?Math.round(100*auto.length/state.decisions.length):0,usd_auto_approved:round2(approved.reduce((n,d)=>n+(d.amount||0),0)),usd_held:round2(state.queue.reduce((n,q)=>n+(q.amount||0),0)),avg_latency_ms:state.latencies.length?Math.floor(state.latencies.reduce((a,b)=>a+b,0)/state.latencies.length):0,minutes_saved:auto.length*state.policy.settings.review_minutes_per_invoice,tokens:state.tokens};}
-function whatif(){const spend=Object.fromEntries(Object.entries(state.policy.matters).map(([id,m])=>[id,m.spent_to_date])),flips=[];for(const r of state.decisions){const v=policyCheck(r,state.policy,spend);if(v.status==="APPROVE"&&spend[r.matter_id]!=null)spend[r.matter_id]+=r.amount||0;const was=["APPROVE","HUMAN_APPROVED"].includes(r.status)?"APPROVE":"EXCEPTION";if(v.status!==was)flips.push({invoice_id:r.invoice_id,from:was,to:v.status,reasons:v.reasons});}return flips;}
-function snapshot(){return{invoices:SEED_INVOICES.map(i=>({...i,done:!state.pending.has(i.id)})),policy:state.policy,matters:Object.entries(state.policy.matters).map(([id,m])=>({id,name:m.name,budget:m.budget,spent:round2(state.spend[id]||0),utilisation:Math.round(1000*(state.spend[id]||0)/m.budget)/10})),decisions:state.decisions.slice(-40),audit:state.auditRaw.slice(-60).reverse(),queue:clone(state.queue),metrics:metrics(),store:{backend:"in-process",up:state.store.up,audit_len:state.auditRaw.length,queue_len:state.queue.length,buffered:state.buffer.length,replayed:state.store.replayed},faults:state.faults,runtime:{model:LIVE.live?LIVE.model:MODEL_ID,bedrock:LIVE.live?"gemini":"simulated",redis:"in-process",pending:state.pending.size},tools:TOOLS,whatif:whatif()};}
+function audit(event, record, actor) {
+  state.audit.unshift({n: state.audit.length + 1, event, actor, invoice_id: record.invoice_id, amount: record.amount});
+}
 
-async function resetState() {generation++;state={policy:clone(INITIAL_POLICY),spend:{},decisions:[],pending:new Set(SEED_INVOICES.map(i=>i.id)),latencies:[],tokens:0,auditRaw:[],queue:[],buffer:[],seq:0,store:{up:true,replayed:0},faults:{llm_degraded:false,redis_down:false}};for(const[id,m]of Object.entries(state.policy.matters))state.spend[id]=m.spent_to_date;for(const id of PRESEED_IDS)await processInvoice(BY_ID[id],true,generation);running=null;render(snapshot());}
-function addLog(level,text){$("mcplog").insertAdjacentHTML("afterbegin",`<div style="color:var(--${level==="error"?"bad":level==="warn"?"warn":"ok"})">${text}</div>`);}
-function queueJobs(ids){jobChain=jobChain.then(async()=>{for(const id of ids)if(state.pending.has(id)){running=id;render(snapshot());await processInvoice(BY_ID[id],false,generation);}});}
-function runInvoice(id){const inv=BY_ID[id];resetPipe();running=id;$("liveId").textContent=id+"  "+inv.file;$("rawText").textContent=inv.text;queueJobs([id]);}
-function updatePolicy(body){for(const r of state.policy.rules)if(r.id===body.rule_id){if("enabled"in body)r.enabled=!!body.enabled;if("param"in body)r.params[body.param]=body.value;}if(body.vendor){const n=state.policy.approved_vendors.indexOf(body.vendor);n>=0?state.policy.approved_vendors.splice(n,1):state.policy.approved_vendors.push(body.vendor);}state.policy.version=round2(state.policy.version+.1);render(snapshot());}
-function resolveItem(id,action){const item=popException(id);if(!item)return;if(action==="approve"&&state.spend[item.matter_id]!=null)state.spend[item.matter_id]+=item.amount||0;appendAudit({invoice_id:id,actor:"human:K. Adeyemi",event:action==="approve"?"HUMAN_APPROVED":"HUMAN_REJECTED",status:action==="approve"?"APPROVE":"REJECT",vendor:item.vendor,amount:item.amount,matter_id:item.matter_id,reasons:item.reasons,policy_version:state.policy.version});const record=state.decisions.find(d=>d.invoice_id===id);if(record)record.status=action==="approve"?"HUMAN_APPROVED":"HUMAN_REJECTED";render(snapshot());}
-function rescore(){const released=[];for(const item of [...state.queue]){const record=state.decisions.find(d=>d.invoice_id===item.invoice_id);if(!record)continue;const verdict=policyCheck(record,state.policy,state.spend);if(verdict.status!=="APPROVE")continue;popException(item.invoice_id);if(state.spend[record.matter_id]!=null)state.spend[record.matter_id]+=record.amount||0;record.status="APPROVE";record.reasons=[];record.checks=verdict.checks;appendAudit({invoice_id:item.invoice_id,actor:"agent",event:"RELEASED_ON_POLICY_CHANGE",status:"APPROVE",vendor:record.vendor,amount:record.amount,matter_id:record.matter_id,confidence:record.confidence,reasons:[`policy v${state.policy.version} no longer flags this invoice`],policy_version:state.policy.version});released.push(item.invoice_id);}addLog("ok",`re-scored queue, released ${released.length}`);render(snapshot());}
+async function processInvoice(invoice, offline = false) {
+  const token = generation;
+  const {fields, backend} = await extract(invoice.text, offline);
+  if (token !== generation) return;  // the page was reset while this was in flight
+  const verdict = policyCheck(fields, INITIAL_POLICY, state.spend);
+  const record = {invoice_id: invoice.id, ...fields, backend, status: verdict.status, checks: verdict.checks, reasons: verdict.reasons};
+  state.records[invoice.id] = record;
+  if (verdict.status === "APPROVE") {
+    if (state.spend[fields.matter_id] != null) state.spend[fields.matter_id] += fields.amount || 0;
+    audit("Auto-approved", record, "policy");
+  } else {
+    state.queue.unshift(invoice.id);
+    audit("Sent to review", record, "policy");
+  }
+}
 
-$("inbox").addEventListener("click",e=>{const el=e.target.closest(".inv");if(el&&!el.classList.contains("done"))runInvoice(el.dataset.id);});
-$("btnAll").onclick=()=>{resetPipe();queueJobs([...state.pending]);};
-$("btnReset").onclick=()=>{resetPipe();resetState();};
-$("btnDrift").onclick=()=>{state.faults.llm_degraded=!state.faults.llm_degraded;addLog(state.faults.llm_degraded?"warn":"ok",`model drift ${state.faults.llm_degraded?"INJECTED":"cleared"}`);render(snapshot());};
-$("btnRedis").onclick=()=>{if(state.store.up){state.store.up=false;state.faults.redis_down=true;addLog("error","Redis unreachable - audit writes now buffering");}else{state.store.up=true;state.faults.redis_down=false;const replayed=state.buffer.length;while(state.buffer.length)doStore(...state.buffer.shift());state.store.replayed+=replayed;addLog("ok",`Redis back - replayed ${replayed} buffered write(s)`);}render(snapshot());};
-$("btnRescore").onclick=rescore;
-$("rules").addEventListener("click",e=>{const el=e.target.closest(".toggle");if(el)updatePolicy({rule_id:el.dataset.rule,enabled:!state.policy.rules.find(r=>r.id===el.dataset.rule).enabled});});
-$("vendors").addEventListener("click",e=>{const el=e.target.closest(".vchip");if(el)updatePolicy({vendor:el.dataset.v});});
-$("queue").addEventListener("click",e=>{if(e.target.dataset.ok)resolveItem(e.target.dataset.ok,"approve");if(e.target.dataset.no)resolveItem(e.target.dataset.no,"reject");});
-const slider=(id,rule,param,formatter)=>{$(id).oninput=()=>setSlider(id,$(id).value,formatter(+$(id).value));$(id).onchange=()=>updatePolicy({rule_id:rule,param,value:+$(id).value});};
-slider("ceil","amount_ceiling","max_auto_approve",money);slider("conf","extraction_confidence","min_confidence",v=>v.toFixed(2));slider("bud","matter_budget","utilization_ceiling",v=>Math.round(v*100)+"%");
+function resolve(id, approve) {
+  const record = state.records[id], n = state.queue.indexOf(id);
+  if (n < 0) return;
+  state.queue.splice(n, 1);
+  if (approve && state.spend[record.matter_id] != null) state.spend[record.matter_id] += record.amount || 0;
+  record.status = approve ? "HUMAN_APPROVED" : "HUMAN_REJECTED";
+  audit(approve ? "Reviewer approved" : "Reviewer rejected", record, "reviewer");
+  render();
+}
 
-let mineCount=0;
-$("btnMine").onclick=()=>{
-  const text=$("mineText").value.trim();
-  if(!text){$("mineNote").textContent="paste some invoice text first";return;}
-  mineCount++;const inv={id:`YOURS-${mineCount}`,file:"pasted text",text};
-  SEED_INVOICES.push(inv);BY_ID[inv.id]=inv;state.pending.add(inv.id);
-  $("mineNote").textContent=LIVE.live?`running on ${LIVE.model}`:"running on the in-browser reader (no live model here)";
-  render(snapshot());runInvoice(inv.id);
+function run(ids) {
+  for (const id of ids) running.add(id);
+  render();
+  jobs = jobs.then(async () => {
+    for (const id of ids) {
+      if (BY_ID[id] && !state.records[id]) await processInvoice(BY_ID[id]);
+      running.delete(id);
+      render();
+    }
+  });
+}
+
+async function reset() {
+  generation++;
+  running.clear();
+  state = newState();
+  for (const inv of SEED_INVOICES.filter(i => i.file === "pasted text")) {
+    SEED_INVOICES.splice(SEED_INVOICES.indexOf(inv), 1); delete BY_ID[inv.id];
+  }
+  for (const id of PRESEED_IDS) await processInvoice(BY_ID[id], true);
+  selected = PRESEED_IDS[0];
+  render();
+}
+
+// --- rendering ----------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const money = n => n == null ? "not found" : "$" + Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const STATUS = {
+  APPROVE: ["ok", "Approved"], EXCEPTION: ["hold", "Needs review"],
+  HUMAN_APPROVED: ["ok", "Approved by reviewer"], HUMAN_REJECTED: ["no", "Rejected"],
 };
-resetState().then(checkLive);
+const badge = status => `<span class="badge ${STATUS[status][0]}">${STATUS[status][1]}</span>`;
+
+function renderInbox() {
+  $("inbox").innerHTML = SEED_INVOICES.map(inv => {
+    const record = state.records[inv.id];
+    const right = running.has(inv.id) ? `<span class="badge wait">Reading…</span>` : record ? badge(record.status) : `<span class="badge todo">Not run</span>`;
+    return `<button class="row ${selected === inv.id ? "on" : ""}" data-id="${esc(inv.id)}">
+      <span><b>${esc(inv.id)}</b><small>${esc(record && record.vendor || inv.file)}</small></span>${right}</button>`;
+  }).join("");
+  const left = SEED_INVOICES.filter(i => !state.records[i.id] && !running.has(i.id)).length;
+  $("btnAll").disabled = !left;
+  $("btnAll").textContent = left ? `Run the other ${left}` : "All done";
+}
+
+function renderDetail() {
+  const invoice = BY_ID[selected], record = state.records[selected];
+  if (!invoice) { $("detail").innerHTML = `<p class="empty">Pick an invoice on the left.</p>`; return; }
+  const source = `<details><summary>Invoice text</summary><pre>${esc(invoice.text)}</pre></details>`;
+  if (!record) {
+    $("detail").innerHTML = running.has(selected)
+      ? `<h3>${esc(invoice.id)}</h3><p class="empty"><span class="spin"></span>${LIVE.on ? "Gemini is reading the invoice…" : "Reading the invoice…"}</p>${source}`
+      : `<h3>${esc(invoice.id)}</h3><p class="empty">This invoice has not been run yet.</p><button class="btn" id="btnRun">Run this invoice</button>${source}`;
+    return;
+  }
+  const said = record.model_confidence;
+  const lowered = said != null && said !== record.confidence ? ` <small>(the model said ${said.toFixed(2)}; lowered because a check failed)</small>` : "";
+  const verdict = {
+    APPROVE: "Approved automatically. Every rule passed.",
+    EXCEPTION: `Sent to a person. ${record.reasons.length} rule${record.reasons.length === 1 ? "" : "s"} failed.`,
+    HUMAN_APPROVED: "Approved by the reviewer.", HUMAN_REJECTED: "Rejected by the reviewer.",
+  }[record.status];
+  $("detail").innerHTML = `
+    <div class="verdict ${STATUS[record.status][0]}"><h3>${esc(invoice.id)}</h3><p>${verdict}</p></div>
+    <h4>What was read <small>by ${record.backend === "gemini" ? esc(LIVE.model) : "the offline reader"}</small></h4>
+    <dl>
+      <dt>Vendor</dt><dd>${esc(record.vendor || "not found")}</dd>
+      <dt>Total</dt><dd>${money(record.amount)}</dd>
+      <dt>Matter</dt><dd>${esc(record.matter_id || "not found")}</dd>
+      <dt>Line items</dt><dd>${(record.line_items || []).length}</dd>
+      <dt>Confidence</dt><dd>${Number(record.confidence).toFixed(2)}${lowered}</dd>
+    </dl>
+    ${(record.notes || []).length ? `<ul class="notes">${record.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+    <h4>Policy rules</h4>
+    <ul class="checks">${record.checks.map(c => `<li class="${c.status}"><i></i><span><b>${esc(c.title)}</b><small>${esc(c.detail)}</small></span></li>`).join("")}</ul>
+    ${source}`;
+}
+
+function renderQueue() {
+  $("queueCount").textContent = state.queue.length;
+  $("queue").innerHTML = state.queue.map(id => {
+    const r = state.records[id];
+    return `<div class="item"><div><b>${esc(id)}</b> · ${esc(r.vendor || "unknown vendor")} · ${money(r.amount)}
+      <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
+      <div class="acts"><button class="btn sm" data-ok="${esc(id)}">Approve</button><button class="btn sm ghost" data-no="${esc(id)}">Reject</button></div></div>`;
+  }).join("") || `<p class="empty">Nothing is waiting.</p>`;
+}
+
+function renderAudit() {
+  $("auditCount").textContent = state.audit.length;
+  $("audit").innerHTML = state.audit.map(a =>
+    `<tr><td>${a.n}</td><td>${esc(a.event)}</td><td>${esc(a.invoice_id)}</td><td class="num">${money(a.amount)}</td><td>${esc(a.actor)}</td></tr>`).join("");
+}
+
+function render() {
+  $("mode").textContent = LIVE.on ? `Live · ${LIVE.model}` : "Offline reader";
+  $("mode").className = "chip " + (LIVE.on ? "live" : "");
+  renderInbox(); renderDetail(); renderQueue(); renderAudit();
+}
+
+// --- events -------------------------------------------------------------------
+$("inbox").addEventListener("click", e => {
+  const row = e.target.closest(".row");
+  if (row) { selected = row.dataset.id; render(); }
+});
+$("detail").addEventListener("click", e => { if (e.target.id === "btnRun") run([selected]); });
+$("btnAll").onclick = () => run(SEED_INVOICES.filter(i => !state.records[i.id] && !running.has(i.id)).map(i => i.id));
+$("btnReset").onclick = reset;
+$("queue").addEventListener("click", e => {
+  if (e.target.dataset.ok) resolve(e.target.dataset.ok, true);
+  if (e.target.dataset.no) resolve(e.target.dataset.no, false);
+});
+$("btnPaste").onclick = () => {
+  const text = $("pasteText").value.trim();
+  if (!text) { $("pasteText").focus(); return; }
+  const invoice = {id: `PASTED-${++pasted}`, file: "pasted text", text};
+  SEED_INVOICES.unshift(invoice); BY_ID[invoice.id] = invoice;
+  $("pasteText").value = "";
+  selected = invoice.id;
+  run([invoice.id]);
+};
+
+reset().then(checkLive).then(render);

@@ -4,9 +4,12 @@ An LLM reads legal invoices; a deterministic policy engine decides which ones
 can be paid without a person. Anything the policy will not sign for goes to a
 human queue with the reasons, and every decision is written to an audit stream.
 
-**Live demo:** https://soren.ashanpraba.com — click an invoice, or paste your
-own under "Try your own invoice". Extraction runs on Gemini through a
-serverless function; the API key never reaches the browser.
+**Live demo:** https://soren.ashanpraba.com
+
+Pick a sample invoice or paste your own. The page shows what was read, which
+of the six rules passed, and where the invoice went; held invoices can be
+approved or rejected from the review queue. Extraction runs on Gemini through
+a serverless function, so the API key never reaches the browser.
 
 ## How it works
 
@@ -39,8 +42,8 @@ bash run.sh                              # http://localhost:8000
 ```
 
 Python 3.10+ and PyYAML. Set `REDIS_URL` to use a real Redis server (needs
-`redis-py`); otherwise an in-process stand-in is used. `web/` is the browser
-version of the same app, deployed to Vercel with `api/extract.py` as the
+`redis-py`); otherwise an in-process stand-in is used. `web/` is the page,
+and the live site is the same page on Vercel with `api/extract.py` as the
 extraction endpoint (20 requests a minute per client).
 
 ## Tests
