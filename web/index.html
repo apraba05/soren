@@ -52,7 +52,7 @@
   .btn:disabled { opacity:.35; cursor:default; }
   .btn.ghost { background:transparent; color:var(--text); }
   .btn.sm { padding:6px 16px; font-size:13px; }
-  .bar { display:flex; gap:8px; margin-top:16px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
 
   .rows { display:flex; flex-direction:column; gap:4px; max-height:440px; overflow:auto; margin:0 -8px; }
   .row { display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%; padding:10px 12px; border:0; border-radius:12px; background:none; font:inherit; text-align:left; cursor:pointer; }
@@ -148,8 +148,9 @@
             <button class="btn sm" id="btnPaste">Run it</button>
             <label class="btn sm ghost" for="pdfFile">Upload a PDF</label>
             <input type="file" id="pdfFile" accept="application/pdf,.pdf" hidden>
+            <button class="btn sm ghost" id="btnSample">Add the sample PDF</button>
           </div>
-          <p class="hint"><span id="pdfNote"></span> <a href="sample-invoice.pdf" download>Download a sample invoice PDF</a> to try the upload.</p>
+          <p class="hint"><span id="pdfNote"></span>The sample is a real PDF invoice (<a href="sample-invoice.pdf" target="_blank" rel="noopener">view it</a>) that bills for travel.</p>
         </div>
       </section>
 

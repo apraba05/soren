@@ -7,7 +7,7 @@ human queue with the reasons, and every decision is written to an audit stream.
 **Live demo:** https://soren.ashanpraba.com
 
 Pick a sample invoice, paste your own, or upload a PDF (text is pulled out in
-the browser; `web/sample-invoice.pdf` is one to try). The page shows what was read, which
+the browser). "Add the sample PDF" runs `web/sample-invoice.pdf` in one click. The page shows what was read, which
 of the six rules passed, and where the invoice went; held invoices can be
 approved or rejected from the review queue. Extraction runs on Gemini through
 a serverless function, so the API key never reaches the browser.

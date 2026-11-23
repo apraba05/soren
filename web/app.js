@@ -378,10 +378,8 @@ async function pdfToText(file) {
   return lines.join("\n").trim();
 }
 
-$("pdfFile").onchange = async e => {
-  const file = e.target.files[0], note = $("pdfNote");
-  e.target.value = "";
-  if (!file) return;
+async function addPdf(file) {
+  const note = $("pdfNote");
   if (file.size > MAX_PDF_BYTES) { note.textContent = "That PDF is over 5 MB."; return; }
   note.textContent = "Reading the PDF…";
   try {
@@ -392,6 +390,22 @@ $("pdfFile").onchange = async e => {
     addInvoice(text, file.name);
   } catch (err) {
     note.textContent = "That file could not be read as a PDF.";
+  }
+}
+
+$("pdfFile").onchange = e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (file) addPdf(file);
+};
+
+$("btnSample").onclick = async () => {
+  try {
+    const r = await fetch("sample-invoice.pdf");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    addPdf(new File([await r.blob()], "sample-invoice.pdf", {type: "application/pdf"}));
+  } catch (err) {
+    $("pdfNote").textContent = "The sample invoice could not be loaded.";
   }
 };
 
